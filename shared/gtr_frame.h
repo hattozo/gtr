@@ -11,6 +11,8 @@
 
 #define GTR_FRAME_MAPPING_NAME "Local\\GtrPassthroughFrame"
 #define GTR_FRAME_MAGIC 0x46525447u // "GTRF"
+// An auto-reset event the guest sets each time it publishes a frame, which the compositor waits on (see FreeRunning)
+#define GTR_FRAME_PUBLISHED_EVENT "Local\\GtrPassthroughPublished"
 #define GTR_FRAME_VERSION 5u
 // Enough that a frame the host chose to show is still there when it gets to showing it, a frame or two of its own later,
 // with the guest publishing several times as fast
@@ -65,7 +67,10 @@ typedef struct GtrFrameSlot {
     float LightUp[3];
     float LightTan;
     uint32_t LightSize;
-    uint8_t Padding[60];
+    // Which picture of the interface the slot holds. It is mostly the same from one frame to the next, and 8 MB at 1080p, so
+    // it is given a new number only when it changes, and the host need take it up only then. 0 from a guest that doesn't say
+    uint64_t GuiVersion;
+    uint8_t Padding[52];
 } GtrFrameSlot;
 
 typedef struct GtrFrameHeader {
@@ -131,11 +136,38 @@ typedef struct GtrHostState {
     // What the sun's shadow takes from red, green and blue, for each the share of the darkness SunShadow says: the sun's
     // own color, which a shadow is left without. All 0: the effect's own
     float SunTint[3];
-    uint8_t Padding[220 - 8 * GTR_HOST_TICKS - 56];
+    // 0, the default: the compositor holds each of the host's frames, for a few milliseconds at most, until the guest has
+    // published a frame newer than the last one it saw. The two share one GPU, and the window in front takes it: a host left
+    // to draw as fast as it can starved the guest to a third of its rate. 1 lets the host draw as fast as it likes
+    int32_t FreeRunning;
+    uint8_t Padding[220 - 8 * GTR_HOST_TICKS - 60];
 } GtrHostState;
+// GTA's people and props that the paintball gun has hit, which GTA has no way to colour: the compositor colours them in its
+// picture instead, wherever its surface lies inside one of these boxes. Written by the script each tick, in that tick's
+// camera space (x right, y up, z forward, metres), like the sun's direction. Vehicles are painted in GTA itself.
+#define GTR_PAINT_MAPPING_NAME "Local\\GtrPassthroughPaint"
+#define GTR_PAINT_MAGIC 0x50525447u // "GTRP"
+#define GTR_PAINT_BOXES 16
+
+typedef struct GtrPaintBox {
+    float Centre[3];
+    float Strength;        // 0 to 1: how much of the surface's own colour the paint takes over
+    // The box's three axes in the camera's space, each divided by the box's half size along it: a point is inside when its
+    // offset from Centre has a dot product within -1..1 with all three
+    float Across[3][3];
+    float Color[3];        // 0 to 1
+} GtrPaintBox;
+
+typedef struct GtrPaintState {
+    uint32_t Magic;
+    uint32_t Count;
+    uint32_t Reserved[2];
+    GtrPaintBox Boxes[GTR_PAINT_BOXES];
+} GtrPaintState;
 #pragma pack(pop)
 
 #ifdef __cplusplus
+static_assert(sizeof(GtrPaintBox) == 64, "GtrPaintBox layout");
 static_assert(sizeof(GtrHostState) == 512, "GtrHostState layout");
 static_assert(sizeof(GtrFrameSlot) == 256, "GtrFrameSlot layout");
 static_assert(sizeof(GtrFrameHeader) == 256 + 256 * GTR_FRAME_SLOTS, "GtrFrameHeader layout");

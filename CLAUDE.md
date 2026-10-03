@@ -23,6 +23,7 @@ is **Legacy** (`D:\SteamLibrary\steamapps\common\Grand Theft Auto V`), which `ho
   the user's Vanadium (another agent is changing its renderer and VehicleSeats there), the patch must be *rewritten*
   against the new code, not re-applied. It covers:
   - `Renderer::GetSceneResources` and `SetMainSceneDrawn(false)`;
+  - `GpuContext::SetVSync`, so the guest's covered window doesn't wait on vsync (it paces itself in `main.cpp`);
   - the transparent-coverage pass: `PartPass::Coverage`, `fs_coverage` in part.wgsl, `SceneResources::CoveragePipeline`,
     and `SceneView::SetTransparentCoverage/SetSkyDrawn/GetCoverageView/DrawCoverage`.
 - **Check that GTA is closed** (`tasklist | grep -i GTA5`) before:
@@ -48,6 +49,7 @@ The shell is Windows PowerShell 5.1 or Git Bash. Python is `.venv\Scripts\python
 | Install into GTA | `host\gta\install.ps1` (GTA closed; `-Remove` uninstalls) |
 | Run Luau in the guest | `.venv\Scripts\python.exe host\lua.py "return workspace.Gravity"` |
 | Send a raw message | `host\send.py '<json>'`; `{"t":"host","op":"..."}` is relayed to GTA's script (e.g. `sunreload`, `wanted`, `debug`) |
+| Tune the guest while it runs | `host\send.py '{"t":"perf","fps":75,"quality":10}'` (0 for the defaults); `{"t":"host","op":"lockstep","on":0}` lets GTA run free |
 
 Shader-only changes don't need a GTA restart. Copy `host/gta/shaders/GtrPassthrough.fx` into the game's
 `reshade-shaders\Shaders\`; the add-on reloads the effect when the file changes. The sun table `GtrSun.txt` lives in
@@ -63,7 +65,7 @@ cd host; ..\.venv\Scripts\python.exe test_weapons.py
 ```
 
 - Most need a place (`tools\run-guest.ps1`), restarted fresh between suites:
-  `test_bodies`, `test_weapons`, `test_trainer`, `test_drive`, `test_step`, `test_ground`, `test_pistol_range`.
+  `test_bodies`, `test_walls`, `test_buildtools`, `test_weapons`, `test_trainer`, `test_drive`, `test_step`, `test_ground`, `test_pistol_range`.
 - `test_transparency` and `test_compositor` need `tools\run-guest.ps1 -Empty`. A character in the scene makes
   `test_compositor` fail.
 - `test_compositor` drives `build\gta\fakegta\fakegta.exe`: a D3D11 stand-in for GTA with the real ReShade add-on and effect.
@@ -93,13 +95,18 @@ GTA V Legacy process                                         gtr-guest.exe (Vana
   - the GUI layer;
   - a light-view depth map for sun shadows;
   - the camera tick it was drawn for.
+- `Local\GtrPassthroughPaint` (`GtrPaintState`): the people and props the paintball gun painted, as boxes in the tick's
+  camera space; the effect colours GTA's surfaces inside them (vehicles are painted in GTA itself).
 - `Local\GtrPassthroughHost` (`GtrHostState`, exactly 512 bytes): what the script tells the compositor each frame
   (camera ticks, sun direction/strength/tint, debug view and so on). New fields must come out of `Padding`, and the
   `static_assert` must still hold.
 
 **Frame sync.** The script tags each camera it sends with a tick. The guest draws from that exact camera, and the
 compositor picks the slot whose tick matches the frame GTA is presenting, so the character doesn't slide against the
-world. In the guest, `TaskScheduler` job priorities are deliberate:
+world. The compositor also holds each GTA frame (25 ms at most) until the guest has published a new one, or
+GTA, in front and GPU-bound, starves the guest (`GtrHostState::FreeRunning`, op `lockstep`). In the guest, `TaskScheduler`
+job priorities are deliberate:
+- `GtrPace` -1: waits out the frame rate cap (vsync is off on the covered window);
 - `GtrReceive` 0: messages and input at the frame start;
 - PreRender 1;
 - `GtrDraw` 9994: export *before* physics, or the character slides;

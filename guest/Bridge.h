@@ -15,6 +15,7 @@
 
 #include <array>
 #include <chrono>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -51,6 +52,8 @@ public:
     void Receive();
     // Answers the host; run once the frame is done
     void Tick();
+    // Called with the frame rate a "perf" message asks for, 0 for the default
+    void SetFrameRateHandler(std::function<void(int)> handler) { mSetFrameRate = std::move(handler); }
 private:
     Vanadium::Vector3 PointToGuest(const double host[3]) const;
     static Vanadium::Vector3 DirectionToGuest(const float host[3]);
@@ -75,6 +78,7 @@ private:
     Vanadium::Engine &mEngine;
     Vanadium::DataModel &mDataModel;
     BridgeOptions mOptions;
+    std::function<void(int)> mSetFrameRate;
     float mStudsPerMetre;
     HostLink mLink;
     FrameExporter mExporter;

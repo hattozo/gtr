@@ -18,7 +18,7 @@ EMPTY_DEPTH = 1.0e9
 FILE_MAP_READ = 0x0004
 
 # Sequence, CameraId, Width, Height, FovY, reserved, position, right, forward, up, reserved, GuestSeconds
-SLOT_FORMAT = "<qqIIff3d3f3f3fIdIII4H4x3d3f3f3ffI"
+SLOT_FORMAT = "<qqIIff3d3f3f3fIdIII4H4x3d3f3f3ffIQ"
 
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 _kernel32.OpenFileMappingW.restype = wintypes.HANDLE
@@ -38,6 +38,8 @@ class Frame:
         self.light_position = np.array(rest[4:7])
         self.light_right, self.light_forward, self.light_up = np.array(rest[7:10]), np.array(rest[10:13]), np.array(rest[13:16])
         self.light_tan, self.light_size = rest[16], rest[17]
+        # Which picture of the interface it is: the same number, the same picture (0 from a guest that doesn't number them)
+        self.gui_version = rest[18]
         self.light = None
         self.position = np.array([px, py, pz])
         self.right = np.array([rx, ry, rz])

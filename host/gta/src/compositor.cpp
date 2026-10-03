@@ -31,6 +31,12 @@ namespace
 	constexpr DWORD kPausedMilliseconds = 300;
 	// A frame is some megabytes to copy, so no more than this many are taken up in one of the host's frames; the rest follow
 	constexpr int kUploadsPerPresent = 3;
+	// The longest one of the host's frames is held for the guest's next (GtrHostState::FreeRunning). Long enough for a guest
+	// frame to get through the GPU while the host isn't feeding it (the guest drew 88 a second with the GPU to itself), and
+	// short enough that a guest that can't keep up costs the host no more than this a frame
+	constexpr double kGuestWaitMilliseconds = 25.0;
+	// A guest that has published nothing for this long has stalled or stopped, and isn't waited for at all
+	constexpr double kGuestStalledMilliseconds = 200.0;
 
 	struct Mapping
 	{
@@ -38,7 +44,7 @@ namespace
 		const uint8_t *view = nullptr;
 		DWORD nextAttempt = 0;
 	};
-	Mapping g_frames, g_host;
+	Mapping g_frames, g_host, g_paint;
 	int64_t g_slotStride = 0;
 	DWORD g_shownAt = 0;
 	int32_t g_captured = 0;
@@ -72,6 +78,8 @@ namespace
 	Texture g_gui;
 	uint32_t g_guiWidth = 0, g_guiHeight = 0, g_guiBlueFirst = 0;
 	int64_t g_guiFrame = 0;
+	// The guest's number for the picture of its interface the texture holds (GtrFrameSlot::GuiVersion), 0 for none known
+	uint64_t g_guiVersion = 0;
 	bool g_hasGui = false;
 	// The effect's file, watched so that a changed effect is taken up by a game that is running
 	char g_effectPath[MAX_PATH] = {};
@@ -79,6 +87,11 @@ namespace
 	DWORD g_effectCheckedAt = 0;
 	uint32_t g_width = 0, g_height = 0;
 	bool g_hasFrame = false;
+	// The guest's published event, the frame count when one of the host's frames last went ahead, and when that count last
+	// grew. The event is kept open for good: a guest that restarts opens the same one again, since this handle keeps it alive
+	HANDLE g_published = nullptr;
+	int64_t g_seenPublished = 0;
+	double g_publishedAt = 0.0;
 
 	void close(Mapping &mapping)
 	{
@@ -294,6 +307,7 @@ namespace
 		g_gui = Texture();
 		g_guiWidth = g_guiHeight = 0;
 		g_guiFrame = 0;
+		g_guiVersion = 0;
 		g_hasGui = false;
 	}
 
@@ -331,6 +345,14 @@ namespace
 			runtime->update_texture_bindings("GTRGUI", g_gui.srv, g_gui.srv);
 		}
 
+		// The same picture as the texture holds already: 8 MB not copied on the game's render thread
+		const uint64_t version = slot.GuiVersion;
+		if (version != 0 && version == g_guiVersion)
+		{
+			g_guiFrame = frame;
+			g_hasGui = true;
+			return;
+		}
 		cmd_list->barrier(g_gui.tex, resource_usage::shader_resource, resource_usage::copy_dest);
 		subresource_data data;
 		data.row_pitch = width * 4;
@@ -340,8 +362,12 @@ namespace
 		dev->update_texture_region(data, g_gui.tex, 0);
 		cmd_list->barrier(g_gui.tex, resource_usage::copy_dest, resource_usage::shader_resource);
 		if (slot.Sequence != sequence)
+		{
+			g_guiVersion = 0;
 			return;
+		}
 		g_guiFrame = frame;
+		g_guiVersion = version;
 		g_hasGui = true;
 	}
 
@@ -412,6 +438,48 @@ namespace
 		return true;
 	}
 
+	double now_milliseconds()
+	{
+		static const double perMillisecond = [] {
+			LARGE_INTEGER frequency;
+			QueryPerformanceFrequency(&frequency);
+			return double(frequency.QuadPart) / 1000.0;
+		}();
+		LARGE_INTEGER counter;
+		QueryPerformanceCounter(&counter);
+		return double(counter.QuadPart) / perMillisecond;
+	}
+
+	/// Holds the host's frame until the guest has published one since the last, so that the host, which has the focus and
+	/// with it the GPU, leaves the guest the time it needs to draw. A guest that keeps up is never waited for.
+	void wait_for_guest(const GtrHostState *host)
+	{
+		const auto *header = reinterpret_cast<const GtrFrameHeader *>(g_frames.view);
+		// The guest writes this while it is being read
+		const auto published = [header] { return *reinterpret_cast<const volatile int64_t *>(&header->Published); };
+		const double start = now_milliseconds();
+		if (published() != g_seenPublished)
+		{
+			g_seenPublished = published();
+			g_publishedAt = start;
+			return;
+		}
+		if (host != nullptr && host->FreeRunning != 0)
+			return;
+		if (g_published == nullptr)
+			g_published = OpenEventA(SYNCHRONIZE, FALSE, GTR_FRAME_PUBLISHED_EVENT);
+		if (g_published == nullptr || start - g_publishedAt > kGuestStalledMilliseconds)
+			return;
+		// The event can be left set by a frame already counted, so the count is what is waited for
+		for (double waited = 0.0; published() == g_seenPublished && waited < kGuestWaitMilliseconds; waited = now_milliseconds() - start)
+			WaitForSingleObject(g_published, DWORD(kGuestWaitMilliseconds - waited) + 1);
+		if (published() != g_seenPublished)
+		{
+			g_seenPublished = published();
+			g_publishedAt = now_milliseconds();
+		}
+	}
+
 	void set_uniform(effect_runtime *runtime, const char *name, bool value)
 	{
 		if (const effect_uniform_variable variable = runtime->find_uniform_variable(kEffect, name); variable.handle != 0)
@@ -472,6 +540,7 @@ namespace
 		int latest = 0, tickLayer[GTR_HOST_TICKS] = {};
 		if (active)
 		{
+			wait_for_guest(host);
 			marked = update_layers(runtime, cmd_list, host, latest, tickLayer);
 			update_gui(runtime, cmd_list);
 		}
@@ -522,6 +591,14 @@ namespace
 			if (const effect_uniform_variable variable = runtime->find_uniform_variable(kEffect, name); variable.handle != 0)
 				runtime->set_uniform_value_float(variable, g_layers[i].lightTan);
 		}
+		// The painted people and props (GtrPaintState), straight from the script's boxes
+		const bool painting = open(g_paint, GTR_PAINT_MAPPING_NAME, GTR_PAINT_MAGIC, FILE_MAP_READ, sizeof(GtrPaintState));
+		const auto *paint = painting ? reinterpret_cast<const GtrPaintState *>(g_paint.view) : nullptr;
+		const int painted = paint != nullptr && active ? int(std::min<uint32_t>(paint->Count, GTR_PAINT_BOXES)) : 0;
+		set_uniform(runtime, "GtrPaintCount", painted);
+		if (painted > 0)
+			if (const effect_uniform_variable variable = runtime->find_uniform_variable(kEffect, "GtrPaint"); variable.handle != 0)
+				runtime->set_uniform_value_float(variable, reinterpret_cast<const float *>(paint->Boxes), size_t(painted) * 16);
 		set_uniform(runtime, "GtrShowMark", host != nullptr && host->ShowMark != 0);
 		if (host != nullptr && host->DebugView != 0)
 			set_uniform(runtime, "DebugView", host->DebugView - 1);
@@ -639,6 +716,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 		reshade::unregister_addon(module);
 		close(g_frames);
 		close(g_host);
+		close(g_paint);
 		break;
 	}
 	return TRUE;

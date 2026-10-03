@@ -46,6 +46,8 @@ namespace {
 constexpr int sProtocolVersion = 1;
 constexpr const char *sCameraName = "HostCamera";
 constexpr const char *sLightCameraName = "HostLightCamera";
+// D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH, from d3dkmthk.h, which MinGW doesn't ship. REALTIME (5) needs a privilege
+constexpr int sGpuPriorityHigh = 4;
 // The shadow map is drawn from this far towards the sun (studs), far enough that its rays are as good as parallel, and takes
 // in this far round the character
 constexpr float sLightDistance = 700.0f;
@@ -166,6 +168,14 @@ bool Bridge::Open() {
     throttling.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
     throttling.StateMask = 0;
     SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &throttling, sizeof(throttling));
+    // The GPU likewise goes to the window in front: with the host's being played the guest drew 12 to 33 frames a second, and
+    // 88 as soon as the host lost the focus. With the GPU's own scheduler on (Windows 11's default) this may do little;
+    // the compositor holding the host back for the guest's frames is what does the most (GtrHostState::FreeRunning)
+    using SetGpuPriority = LONG(WINAPI *)(HANDLE, int);
+    const HMODULE gdi = LoadLibraryA("gdi32.dll");
+    const auto setGpuPriority = gdi != nullptr ? reinterpret_cast<SetGpuPriority>(GetProcAddress(gdi, "D3DKMTSetProcessSchedulingPriorityClass")) : nullptr;
+    const LONG gpuStatus = setGpuPriority != nullptr ? setGpuPriority(GetCurrentProcess(), sGpuPriorityHigh) : -1;
+    Log::Print("Gtr", "GPU priority {}", gpuStatus == 0 ? "high" : std::format("unchanged ({:#x})", (unsigned long)gpuStatus));
     if (!mLink.Listen(mOptions.Port)) {
         Log::Print("Gtr", "Could not listen on 127.0.0.1:{}", (int)mOptions.Port);
         return false;
@@ -187,6 +197,9 @@ bool Bridge::Open() {
     // The host's picture is drawn in the exporter's own view, so the window's own, the same scene over again, is left out:
     // the window shows the interface alone
     mEngine.GetRenderer()->SetMainSceneDrawn(false);
+    // Nor does anyone watch the window: it sits behind the host's, and a covered window that waits for vsync is held back by
+    // the compositor, for 40 to 55 ms a frame while the host was being played. The guest paces itself instead (main.cpp)
+    mEngine.GetRenderer()->Gpu.SetVSync(false);
     // The pointer is the place's own, drawn as part of the interface (the arrow, a tool's crosshair, UserInputService's
     // MouseIcon): the host shows that and no pointer of its own
     mDataModel.GetService<UserInputService>()->VNSetRobloxCursorEnabled(true);
@@ -756,6 +769,15 @@ void Bridge::Handle(int client, const std::string &line) {
             mHostClock = message.value("clock", 14.0f);
             mHostLatitude.reset();
             mSunDirection.reset();
+        }
+    } else if (type == "perf") {
+        // For measuring what the guest's frames cost the host while it is played: the guest's frame rate cap, and its
+        // render quality level (1 to 21, Roblox's levels; 0 lets the renderer choose by frame time, as it does at first)
+        if (message.contains("fps") && mSetFrameRate)
+            mSetFrameRate(message.value("fps", 0));
+        if (message.contains("quality")) {
+            mEngine.GetRenderer()->SetForcedQualityLevel(message.value("quality", 0));
+            Log::Print("Gtr", "Render quality {}", message.value("quality", 0) > 0 ? std::to_string(message.value("quality", 0)) : std::string("automatic"));
         }
     } else if (type == "debug") {
         if (message.contains("ground"))

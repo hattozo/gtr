@@ -29,7 +29,9 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <array>
 #include <iterator>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -190,6 +192,28 @@ namespace
 	constexpr float kCrashDentPerSpeed = 45.0f;
 	constexpr float kCrashDentMost = 700.0f;
 	constexpr float kCrashDentRadius = 0.6f;
+	// A driver with something of the guest's in front of it (a "blocked" message, see the guest's LookAhead). It is slowed no
+	// harder than this (m/s each second, a firm stop) to come to rest this far short of it (metres), and goes on as before
+	// once the guest has said nothing for this long (ms)
+	constexpr float kBlockedBraking = 7.0f;
+	constexpr float kBlockedStopShort = 0.8f;
+	constexpr DWORD kBlockedForget = 500;
+	// Stopped, it waits a while, between these (ms), sounding the horn now and then, for between these each time and these
+	// apart; then it loses patience, leans on the horn for this long, and pushes through at this speed (m/s, a slow roll, at
+	// which the guest tips a trowel wall over instead of scattering it)
+	constexpr DWORD kBlockedPatience[2] = {3000, 7000};
+	constexpr DWORD kBlockedHorn[2] = {200, 900};
+	constexpr DWORD kBlockedHornApart[2] = {900, 2600};
+	constexpr DWORD kBlockedFedUpHorn = 1500;
+	constexpr float kBlockedPushSpeed = 2.2f;
+	// Below this (m/s) a vehicle counts as stopped
+	constexpr float kBlockedStill = 0.5f;
+	// A painted person or prop (see publish_paint) is coloured within its model's box made this much larger, from this high
+	// above its lowest point (metres), as far as this from the camera (metres), the paint taking this much of its colour
+	constexpr float kPaintMargin = 1.04f;
+	constexpr float kPaintAboveGround = 0.02f;
+	constexpr float kPaintFarthest = 120.0f;
+	constexpr float kPaintStrength = 0.85f;
 	// The guest's fast things are looked ahead of by this long a flight, and this far at the least; so many at a time
 	constexpr int kMostProbes = 16;
 	constexpr float kProbeSeconds = 0.4f;
@@ -229,6 +253,10 @@ namespace
 	HMODULE g_module = nullptr;
 	GuestLink g_link;
 	GtrHostState *g_state = nullptr;
+	// GTA's people and props the paintball gun has painted (vehicles are painted in GTA itself), by entity, with the colour,
+	// and the boxes the compositor colours them in (GtrPaintState)
+	std::unordered_map<int, std::array<float, 3>> g_painted;
+	GtrPaintState *g_paint = nullptr;
 	FILE *g_log = nullptr;
 	std::string g_folder;
 
@@ -325,6 +353,17 @@ namespace
 	bool g_radioWheel = false;
 	// The things a building tool of the place's has hold of, and until when: kept still meanwhile
 	std::unordered_map<int, DWORD> g_held;
+	// Vehicles whose drivers have the guest's things in front of them, by entity
+	struct Blocked
+	{
+		float gap = 0.0f;
+		DWORD heard = 0, lastTick = 0;
+		// When it came to a stop (0 while it hasn't), when it loses patience, and when it next sounds its horn
+		DWORD stoppedAt = 0, fedUpAt = 0, hornAt = 0;
+		bool fedUp = false;
+	};
+	std::unordered_map<int, Blocked> g_blocked;
+	std::minstd_rand g_random(GetTickCount());
 	// The people the character has shoved aside, and when to hand them back to GTA
 	std::unordered_map<int, DWORD> g_shoved;
 	// GTA's people the character has struck, who are to fight it once they are on their feet: from when
@@ -407,6 +446,13 @@ namespace
 			memset(g_state, 0, sizeof(*g_state));
 			g_state->Version = 1;
 			g_state->Magic = GTR_HOST_MAGIC;
+		}
+		const HANDLE paint = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(GtrPaintState), GTR_PAINT_MAPPING_NAME);
+		g_paint = paint != nullptr ? static_cast<GtrPaintState *>(MapViewOfFile(paint, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(GtrPaintState))) : nullptr;
+		if (g_paint != nullptr)
+		{
+			memset(g_paint, 0, sizeof(*g_paint));
+			g_paint->Magic = GTR_PAINT_MAGIC;
 		}
 		log_line("GtrHost started; compositor state %s", g_state != nullptr ? "shared" : "NOT shared");
 	}
@@ -1235,10 +1281,82 @@ namespace
 	}
 
 	/// Tells the compositor where GTA's sun is for a camera turned this way, for the shadows the guest casts.
+	/// The painted people and props near the camera, as boxes in this tick's camera space, for the compositor to colour. Those
+	/// gone from GTA's world are forgotten.
+	void publish_paint(const float camera[3], const float rotation[3])
+	{
+		if (g_paint == nullptr)
+			return;
+		const gta::Basis basis = gta::basis_from_rotation(rotation[0], rotation[1], rotation[2]);
+		const float *axes[3] = {basis.right, basis.up, basis.forward};
+		const auto view = [&](const float v[3]) {
+			return std::array<float, 3>{axes[0][0] * v[0] + axes[0][1] * v[1] + axes[0][2] * v[2], axes[1][0] * v[0] + axes[1][1] * v[1] + axes[1][2] * v[2],
+				axes[2][0] * v[0] + axes[2][1] * v[1] + axes[2][2] * v[2]};
+		};
+		struct Near
+		{
+			int entity;
+			float distance;
+		};
+		std::vector<Near> nearby;
+		for (auto it = g_painted.begin(); it != g_painted.end();)
+		{
+			if (!natives::DoesEntityExist(it->first))
+			{
+				it = g_painted.erase(it);
+				continue;
+			}
+			const Vector3 at = natives::GetEntityCoords(it->first, FALSE);
+			const float dx = at.x - camera[0], dy = at.y - camera[1], dz = at.z - camera[2];
+			const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+			if (distance < kPaintFarthest)
+				nearby.push_back({it->first, distance});
+			++it;
+		}
+		std::sort(nearby.begin(), nearby.end(), [](const Near &a, const Near &b) { return a.distance < b.distance; });
+		uint32_t count = 0;
+		for (const Near &one : nearby)
+		{
+			if (count >= GTR_PAINT_BOXES)
+				break;
+			Vector3 forward, right, up, position, low = {}, high = {};
+			natives::GetEntityMatrix(one.entity, &forward, &right, &up, &position);
+			natives::GetModelDimensions(natives::GetEntityModel(one.entity), &low, &high);
+			// Off the ground it stands on, so the ground round its feet isn't painted with it
+			low.z += kPaintAboveGround;
+			const float middle[3] = {(low.x + high.x) * 0.5f, (low.y + high.y) * 0.5f, (low.z + high.z) * 0.5f};
+			const float half[3] = {(high.x - low.x) * 0.5f * kPaintMargin, (high.y - low.y) * 0.5f * kPaintMargin, (high.z - low.z) * 0.5f * kPaintMargin};
+			const float r[3] = {right.x, right.y, right.z}, f[3] = {forward.x, forward.y, forward.z}, u[3] = {up.x, up.y, up.z};
+			const float centre[3] = {position.x + r[0] * middle[0] + f[0] * middle[1] + u[0] * middle[2] - camera[0],
+				position.y + r[1] * middle[0] + f[1] * middle[1] + u[1] * middle[2] - camera[1], position.z + r[2] * middle[0] + f[2] * middle[1] + u[2] * middle[2] - camera[2]};
+			GtrPaintBox &box = g_paint->Boxes[count++];
+			const auto c = view(centre);
+			std::copy(c.begin(), c.end(), box.Centre);
+			const float *entityAxes[3] = {r, f, u};
+			for (int i = 0; i < 3; ++i)
+			{
+				const auto a = view(entityAxes[i]);
+				for (int j = 0; j < 3; ++j)
+					box.Across[i][j] = a[j] / std::max(half[i], 0.01f);
+			}
+			const auto &color = g_painted[one.entity];
+			std::copy(color.begin(), color.end(), box.Color);
+			box.Strength = kPaintStrength;
+		}
+		g_paint->Count = count;
+	}
+
 	void publish_sun(Ped ped, const float rotation[3], float fov)
 	{
 		if (g_state == nullptr)
 			return;
+		const gta::Basis basis = gta::basis_from_rotation(rotation[0], rotation[1], rotation[2]);
+		const float *axes[3] = {basis.right, basis.up, basis.forward};
+		// The camera's view and the world's up go out with or without a sun: the paint and the lamps work from them too, and
+		// the effect would otherwise go on with the last ones it had, from before the sun set
+		for (int i = 0; i < 3; ++i)
+			g_state->UpView[i] = axes[i][2];
+		g_state->TanHalfFov = std::tan(fov * gta::kDegrees * 0.5f);
 		float sun[3] = {}, shadow = 0.0f;
 		// No sun indoors
 		if (!sun_now(sun, shadow) || natives::GetInteriorFromEntity(ped) != 0)
@@ -1246,14 +1364,8 @@ namespace
 			g_state->SunShadow = 0.0f;
 			return;
 		}
-		const gta::Basis basis = gta::basis_from_rotation(rotation[0], rotation[1], rotation[2]);
-		const float *axes[3] = {basis.right, basis.up, basis.forward};
 		for (int i = 0; i < 3; ++i)
-		{
 			g_state->SunView[i] = axes[i][0] * sun[0] + axes[i][1] * sun[1] + axes[i][2] * sun[2];
-			g_state->UpView[i] = axes[i][2];
-		}
-		g_state->TanHalfFov = std::tan(fov * gta::kDegrees * 0.5f);
 		g_state->SunShadow = shadow * weather_shadow();
 		sun_tint(float(natives::GetClockHours()) + float(natives::GetClockMinutes()) / 60.0f, g_state->SunTint);
 	}
@@ -1721,6 +1833,8 @@ namespace
 			std::fill(std::begin(g_state->TickCamera), std::end(g_state->TickCamera), 0);
 			g_state->SunShadow = 0.0f;
 		}
+		if (g_paint != nullptr)
+			g_paint->Count = 0;
 		if (!g_playing)
 			return;
 		g_playing = false;
@@ -1731,6 +1845,8 @@ namespace
 		natives::FreezeEntityPosition(ped, FALSE);
 		natives::SetPedCanRagdoll(ped, TRUE);
 		natives::SetPedFootstepsEventsEnabled(ped, TRUE);
+		natives::StopPedSpeaking(ped, FALSE);
+		natives::DisablePedPainAudio(ped, FALSE);
 		natives::SetEntityCollision(ped, TRUE, TRUE);
 		natives::ResetEntityAlpha(ped);
 		g_harmReady = false;
@@ -1796,6 +1912,12 @@ namespace
 		// Faded out, not switched off: GTA goes on casting the shadow of a player it doesn't draw, and that shadow, from
 		// GTA's own lights onto GTA's own ground, is the character's
 		natives::SetEntityAlpha(ped, 0);
+		// And silent: the character is the one being played, and the player's own remarks and cries (bumped into, shoved,
+		// shot at) are a voice nobody on screen has. Each tick, since GTA lets them speak again after some of its own events
+		natives::StopPedSpeaking(ped, TRUE);
+		natives::DisablePedPainAudio(ped, TRUE);
+		natives::StopCurrentPlayingAmbientSpeech(ped);
+		natives::StopCurrentPlayingSpeech(ped);
 
 		// GTA's camera goes where the guest's was for the newest frame it has published, so that GTA's picture from there
 		// and that frame are of the same moment, however late the frame is. The compositor has to show the two together, and
@@ -1816,11 +1938,13 @@ namespace
 			const double *c = g_guest.camera, *at = g_guest.character;
 			Vector3 forward, up;
 			const Vector3 seat = seat_position(g_ride.vehicle, forward, up);
-			natives::SetCamCoord(g_camera, seat.x + float(c[0] - at[0]), seat.y + float(c[1] - at[1]), seat.z + float(c[2] - (at[2] + kRideRootAboveFeet)));
+			const float placed[3] = {seat.x + float(c[0] - at[0]), seat.y + float(c[1] - at[1]), seat.z + float(c[2] - (at[2] + kRideRootAboveFeet))};
+			natives::SetCamCoord(g_camera, placed[0], placed[1], placed[2]);
 			natives::SetCamRot(g_camera, float(c[3]), float(c[4]), float(c[5]));
 			natives::SetCamFov(g_camera, float(c[6]));
 			const float turned[3] = {float(c[3]), float(c[4]), float(c[5])};
 			publish_sun(ped, turned, float(c[6]));
+			publish_paint(placed, turned);
 			cameraId = 0;
 		}
 		else if (framed)
@@ -1829,6 +1953,8 @@ namespace
 			natives::SetCamRot(g_camera, rotation[0], rotation[1], rotation[2]);
 			natives::SetCamFov(g_camera, fov);
 			publish_sun(ped, rotation, fov);
+			const float placed[3] = {float(position[0]), float(position[1]), float(position[2])};
+			publish_paint(placed, rotation);
 		}
 		else if (fresh && g_guest.hasCamera)
 		{
@@ -1839,6 +1965,8 @@ namespace
 			natives::SetCamFov(g_camera, float(c[6]));
 			const float turned[3] = {float(c[3]), float(c[4]), float(c[5])};
 			publish_sun(ped, turned, float(c[6]));
+			const float placed[3] = {float(c[0]), float(c[1]), float(c[2])};
+			publish_paint(placed, turned);
 		}
 		if (g_state != nullptr)
 		{
@@ -2055,6 +2183,39 @@ namespace
 			if (!walls.empty())
 				g_link.send_line("{\"t\":\"walls\",\"list\":[" + walls + "]}");
 		}
+		else if (type == "paint")
+		{
+			// The paintball gun has hit one of GTA's things: a vehicle is painted the ball's colour, body and trim; a person or a
+			// prop, which GTA can't colour, is coloured in the compositor's picture (publish_paint)
+			double id = 0.0, color[3];
+			if (!read_numbers(line, "id", &id, 1) || !read_numbers(line, "color", color, 3))
+				return;
+			const int entity = int(id);
+			if (!natives::DoesEntityExist(entity))
+				return;
+			const int r = std::clamp(int(color[0]), 0, 255), g = std::clamp(int(color[1]), 0, 255), b = std::clamp(int(color[2]), 0, 255);
+			if (natives::GetEntityType(entity) == kEntityVehicle)
+			{
+				natives::SetVehicleCustomPrimaryColour(entity, r, g, b);
+				natives::SetVehicleCustomSecondaryColour(entity, r, g, b);
+			}
+			else
+			{
+				g_painted[entity] = {r / 255.0f, g / 255.0f, b / 255.0f};
+			}
+			log_line("%d painted %d %d %d", entity, r, g, b);
+		}
+		else if (type == "blocked")
+		{
+			double id = 0.0, gap = 0.0;
+			if (!read_numbers(line, "id", &id, 1) || !read_numbers(line, "gap", &gap, 1))
+				return;
+			Blocked &blocked = g_blocked[int(id)];
+			if (blocked.heard == 0)
+				blocked.lastTick = GetTickCount();
+			blocked.heard = GetTickCount();
+			blocked.gap = float(gap);
+		}
 		else if (type == "crash")
 		{
 			// One of GTA's vehicles has run into something of the guest's: it is slowed as that would slow it, and dented
@@ -2137,6 +2298,11 @@ namespace
 				g_markOffset = int(numbers[0]);
 			else if (op == "sunreload")
 				load_sun();
+			else if (op == "lockstep" && read_numbers(line, "on", numbers, 1) && g_state != nullptr)
+			{
+				g_state->FreeRunning = numbers[0] != 0.0 ? 0 : 1;
+				log_line("the compositor %s", g_state->FreeRunning != 0 ? "lets the game draw as fast as it likes" : "waits for the guest's frames");
+			}
 			else if (op == "cursor" && read_numbers(line, "mode", numbers, 1))
 				g_cursorMode = int(numbers[0]);
 			else if (op == "wanted" && read_numbers(line, "by", numbers, 1))
@@ -2219,10 +2385,97 @@ namespace
 		}
 	}
 
+	DWORD random_between(const DWORD range[2])
+	{
+		return std::uniform_int_distribution<DWORD>(range[0], range[1])(g_random);
+	}
+
+	/// Drivers with the guest's things in their way: slowed to a stop short of them, impatient, and in the end pushing through.
+	/// The driver's own task goes on throughout, and is only held back, so it drives off as it was once the way is clear.
+	void hold_blocked()
+	{
+		const DWORD now = GetTickCount();
+		for (auto it = g_blocked.begin(); it != g_blocked.end();)
+		{
+			const int vehicle = it->first;
+			Blocked &blocked = it->second;
+			const bool there = natives::DoesEntityExist(vehicle) && natives::GetEntityType(vehicle) == kEntityVehicle;
+			const Ped driver = there ? natives::GetPedInVehicleSeat(vehicle, -1) : 0;
+			// The player's own vehicle, or the character's, is the player's to drive into what they like
+			if (now - blocked.heard > kBlockedForget || driver == 0 || natives::IsPedAPlayer(driver) || natives::IsEntityDead(driver) ||
+				(g_ride.state != Ride::OnFoot && vehicle == g_ride.vehicle))
+			{
+				if (there && blocked.fedUp)
+					log_line("vehicle %d is past the guest's things", vehicle);
+				it = g_blocked.erase(it);
+				continue;
+			}
+			const float seconds = std::min(float(now - blocked.lastTick) / 1000.0f, 0.1f);
+			blocked.lastTick = now;
+			Vector3 forward, right, up, position;
+			natives::GetEntityMatrix(vehicle, &forward, &right, &up, &position);
+			const Vector3 velocity = natives::GetEntityVelocity(vehicle);
+			const float ahead = velocity.x * forward.x + velocity.y * forward.y + velocity.z * forward.z;
+			if (blocked.stoppedAt == 0 && ahead < kBlockedStill)
+			{
+				blocked.stoppedAt = now;
+				blocked.fedUpAt = now + random_between(kBlockedPatience);
+				blocked.hornAt = now + random_between(kBlockedHornApart) / 2;
+			}
+			if (!blocked.fedUp && blocked.stoppedAt != 0 && now >= blocked.fedUpAt)
+			{
+				blocked.fedUp = true;
+				natives::StartVehicleHorn(vehicle, int(kBlockedFedUpHorn));
+				log_line("vehicle %d has lost patience with the guest's things and pushes through", vehicle);
+			}
+			// As fast as it could still stop short of them from, braking firmly; or, out of patience, a slow roll into them
+			const float allowed = blocked.fedUp ? kBlockedPushSpeed : std::sqrt(2.0f * kBlockedBraking * std::max(blocked.gap - kBlockedStopShort, 0.0f));
+			if (ahead > allowed)
+			{
+				const float slowed = std::max(allowed, ahead - kBlockedBraking * seconds);
+				const float less = ahead - slowed;
+				natives::SetEntityVelocity(vehicle, velocity.x - forward.x * less, velocity.y - forward.y * less, velocity.z - forward.z * less);
+				if (!blocked.fedUp)
+					natives::SetVehicleBrakeLights(vehicle, TRUE);
+			}
+			if (!blocked.fedUp && blocked.stoppedAt != 0 && now >= blocked.hornAt)
+			{
+				natives::StartVehicleHorn(vehicle, int(random_between(kBlockedHorn)));
+				blocked.hornAt = now + random_between(kBlockedHornApart);
+			}
+			++it;
+		}
+	}
+
+	double now_milliseconds()
+	{
+		static const double perMillisecond = [] {
+			LARGE_INTEGER frequency;
+			QueryPerformanceFrequency(&frequency);
+			return double(frequency.QuadPart) / 1000.0;
+		}();
+		LARGE_INTEGER counter;
+		QueryPerformanceCounter(&counter);
+		return double(counter.QuadPart) / perMillisecond;
+	}
+
+	// Where the script's time goes, in milliseconds summed over the ticks since the last "frame" line, which reports them a
+	// tick each. The script runs on GTA's game thread, so what it takes is taken from GTA's frame
+	struct TickCosts
+	{
+		double heard = 0.0, play = 0.0, ground = 0.0, bodies = 0.0, rest = 0.0, frame = 0.0;
+		int ticks = 0;
+	} g_costs;
+
 	void tick()
 	{
 		static int frame = 0;
+		static double lastStart = 0.0;
 		++frame;
+		const double start = now_milliseconds();
+		if (lastStart > 0.0)
+			g_costs.frame += start - lastStart;
+		lastStart = start;
 		if (g_state != nullptr)
 			g_state->Heartbeat++;
 		const Ped ped = natives::PlayerPedId();
@@ -2262,9 +2515,11 @@ namespace
 			introduce(natives::GetEntityCoords(ped, TRUE));
 		}
 
+		const double heard = now_milliseconds();
 		int width = 0, height = 0;
 		natives::GetActualScreenResolution(&width, &height);
 		play(ped, width, height);
+		const double played = now_milliseconds();
 		const Vector3 player = natives::GetEntityCoords(ped, TRUE);
 
 		// The guest draws its picture from its place's own camera, at the size of GTA's picture. Sent every frame, small as it
@@ -2281,7 +2536,10 @@ namespace
 				drop_ground(player);
 			rescue_character();
 		}
+		const double grounded = now_milliseconds();
 		send_bodies(ped, player, frame);
+		hold_blocked();
+		const double bodied = now_milliseconds();
 		release_held();
 		release_shoved();
 		fight_back(ped);
@@ -2325,6 +2583,20 @@ namespace
 			capture("a few seconds after connecting");
 		}
 
+		const double end = now_milliseconds();
+		g_costs.heard += heard - start;
+		g_costs.play += played - heard;
+		g_costs.ground += grounded - played;
+		g_costs.bodies += bodied - grounded;
+		g_costs.rest += end - bodied;
+		++g_costs.ticks;
+		if (frame % 600 == 1 && g_costs.ticks > 0)
+		{
+			const double ticks = g_costs.ticks;
+			log_line("script costs, ms a tick: heard %.2f play %.2f ground %.2f bodies %.2f rest %.2f; GTA's frame %.2f", g_costs.heard / ticks,
+				g_costs.play / ticks, g_costs.ground / ticks, g_costs.bodies / ticks, g_costs.rest / ticks, g_costs.frame / ticks);
+			g_costs = TickCosts();
+		}
 		if (frame % 600 == 1)
 			log_line("frame %d: player %.1f %.1f %.1f, camera fov %.1f, clip %.3f..%.0f, screen %dx%d, %zu ground cells, clock %02d:%02d, %s",
 				frame, player.x, player.y, player.z, fov, nearClip, farClip, width, height, g_ground.size(), natives::GetClockHours(), natives::GetClockMinutes(),

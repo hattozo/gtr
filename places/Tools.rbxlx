@@ -2,14 +2,14 @@
 <roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
 	<External>null</External>
 	<External>nil</External>
-	<Item class="StarterPack" referent="RBX0">
+	<Item class="StarterPack" referent="RBX0_0">
 		<Properties>
 			<string name="Name">StarterPack</string>
 			<bool name="Archivable">true</bool>
 			<BinaryString name="Tags"></BinaryString>
 			<BinaryString name="AttributesSerialize"></BinaryString>
 		</Properties>
-		<Item class="Tool" referent="RBX1">
+		<Item class="Tool" referent="RBX0_1">
 			<Properties>
 				<bool name="CanBeDropped">true</bool>
 				<bool name="Enabled">true</bool>
@@ -39,7 +39,7 @@
 				<BinaryString name="Tags"></BinaryString>
 				<BinaryString name="AttributesSerialize"></BinaryString>
 			</Properties>
-			<Item class="Part" referent="RBX2">
+			<Item class="Part" referent="RBX0_2">
 				<Properties>
 					<token name="Shape">1</token>
 					<token name="formFactorRaw">0</token>
@@ -135,7 +135,7 @@
 					<BinaryString name="Tags"></BinaryString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
-				<Item class="SpecialMesh" referent="RBX3">
+				<Item class="SpecialMesh" referent="RBX0_3">
 					<Properties>
 						<token name="MeshType">5</token>
 						<Content name="MeshId">
@@ -165,7 +165,7 @@
 						<BinaryString name="AttributesSerialize"></BinaryString>
 					</Properties>
 				</Item>
-				<Item class="Sound" referent="RBX4">
+				<Item class="Sound" referent="RBX0_4">
 					<Properties>
 						<Content name="SoundId">
 							<url>rbxasset://sounds//paintball.wav</url>
@@ -190,7 +190,7 @@
 					</Properties>
 				</Item>
 			</Item>
-			<Item class="Script" referent="RBX5">
+			<Item class="Script" referent="RBX0_5">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -286,7 +286,7 @@ script.Parent.Activated:connect(onActivated)
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Script" referent="RBX6">
+			<Item class="Script" referent="RBX0_6">
 				<Properties>
 					<bool name="Disabled">true</bool>
 					<token name="RunContext">0</token>
@@ -374,7 +374,7 @@ ball.Parent = nil
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Script" referent="RBX7">
+			<Item class="Script" referent="RBX0_7">
 				<Properties>
 					<bool name="Disabled">true</bool>
 					<token name="RunContext">0</token>
@@ -389,7 +389,7 @@ script.Parent.Parent = nil
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="LocalScript" referent="RBX8">
+			<Item class="LocalScript" referent="RBX0_8">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -441,7 +441,7 @@ Tool.Changed:connect(OnChanged)
 				</Properties>
 			</Item>
 		</Item>
-		<Item class="Tool" referent="RBX9">
+		<Item class="Tool" referent="RBX0_9">
 			<Properties>
 				<bool name="CanBeDropped">true</bool>
 				<bool name="Enabled">true</bool>
@@ -471,7 +471,7 @@ Tool.Changed:connect(OnChanged)
 				<BinaryString name="Tags"></BinaryString>
 				<BinaryString name="AttributesSerialize"></BinaryString>
 			</Properties>
-			<Item class="Part" referent="RBX10">
+			<Item class="Part" referent="RBX0_10">
 				<Properties>
 					<token name="Shape">1</token>
 					<token name="formFactorRaw">3</token>
@@ -567,7 +567,7 @@ Tool.Changed:connect(OnChanged)
 					<BinaryString name="Tags"></BinaryString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
-				<Item class="SpecialMesh" referent="RBX11">
+				<Item class="SpecialMesh" referent="RBX0_11">
 					<Properties>
 						<token name="MeshType">5</token>
 						<Content name="MeshId">
@@ -598,7 +598,7 @@ Tool.Changed:connect(OnChanged)
 					</Properties>
 				</Item>
 			</Item>
-			<Item class="Script" referent="RBX12">
+			<Item class="Script" referent="RBX0_12">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -702,7 +702,7 @@ script.Parent.Activated:connect(onActivated)
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Sound" referent="RBX13">
+			<Item class="Sound" referent="RBX0_13">
 				<Properties>
 					<Content name="SoundId">
 						<url>rbxasset://sounds/collide.wav</url>
@@ -726,7 +726,7 @@ script.Parent.Activated:connect(onActivated)
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Sound" referent="RBX14">
+			<Item class="Sound" referent="RBX0_14">
 				<Properties>
 					<Content name="SoundId">
 						<url>rbxasset://sounds/Rocket whoosh 01.wav</url>
@@ -750,7 +750,7 @@ script.Parent.Activated:connect(onActivated)
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Script" referent="RBX15">
+			<Item class="Script" referent="RBX0_15">
 				<Properties>
 					<bool name="Disabled">true</bool>
 					<token name="RunContext">0</token>
@@ -823,7 +823,7 @@ shaft:remove()
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="LocalScript" referent="RBX16">
+			<Item class="LocalScript" referent="RBX0_16">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -875,7 +875,7 @@ Tool.Changed:connect(OnChanged)
 				</Properties>
 			</Item>
 		</Item>
-		<Item class="Tool" referent="RBX17">
+		<Item class="Tool" referent="RBX0_17">
 			<Properties>
 				<bool name="CanBeDropped">true</bool>
 				<bool name="Enabled">true</bool>
@@ -905,7 +905,7 @@ Tool.Changed:connect(OnChanged)
 				<BinaryString name="Tags"></BinaryString>
 				<BinaryString name="AttributesSerialize"></BinaryString>
 			</Properties>
-			<Item class="Part" referent="RBX18">
+			<Item class="Part" referent="RBX0_18">
 				<Properties>
 					<token name="Shape">1</token>
 					<token name="formFactorRaw">1</token>
@@ -1001,7 +1001,7 @@ Tool.Changed:connect(OnChanged)
 					<BinaryString name="Tags"></BinaryString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
-				<Item class="SpecialMesh" referent="RBX19">
+				<Item class="SpecialMesh" referent="RBX0_19">
 					<Properties>
 						<token name="MeshType">5</token>
 						<Content name="MeshId">
@@ -1031,7 +1031,7 @@ Tool.Changed:connect(OnChanged)
 						<BinaryString name="AttributesSerialize"></BinaryString>
 					</Properties>
 				</Item>
-				<Item class="Sound" referent="RBX20">
+				<Item class="Sound" referent="RBX0_20">
 					<Properties>
 						<Content name="SoundId">
 							<url>rbxasset://sounds//Rubber band sling shot.mp3</url>
@@ -1056,7 +1056,7 @@ Tool.Changed:connect(OnChanged)
 					</Properties>
 				</Item>
 			</Item>
-			<Item class="Script" referent="RBX21">
+			<Item class="Script" referent="RBX0_21">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -1205,7 +1205,7 @@ script.Parent.Activated:connect(onActivated)
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Script" referent="RBX22">
+			<Item class="Script" referent="RBX0_22">
 				<Properties>
 					<bool name="Disabled">true</bool>
 					<token name="RunContext">0</token>
@@ -1273,7 +1273,7 @@ pellet.Parent = nil
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="LocalScript" referent="RBX23">
+			<Item class="LocalScript" referent="RBX0_23">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -1325,7 +1325,7 @@ Tool.Changed:connect(OnChanged)
 				</Properties>
 			</Item>
 		</Item>
-		<Item class="Tool" referent="RBX24">
+		<Item class="Tool" referent="RBX0_24">
 			<Properties>
 				<bool name="CanBeDropped">true</bool>
 				<bool name="Enabled">true</bool>
@@ -1355,7 +1355,7 @@ Tool.Changed:connect(OnChanged)
 				<BinaryString name="Tags"></BinaryString>
 				<BinaryString name="AttributesSerialize"></BinaryString>
 			</Properties>
-			<Item class="Script" referent="RBX25">
+			<Item class="Script" referent="RBX0_25">
 				<Properties>
 					<bool name="Disabled">true</bool>
 					<token name="RunContext">0</token>
@@ -1452,7 +1452,7 @@ Ball:Destroy()]]></ProtectedString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Script" referent="RBX26">
+			<Item class="Script" referent="RBX0_26">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -1528,7 +1528,7 @@ Tool.Activated:connect(onActivated)
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Part" referent="RBX27">
+			<Item class="Part" referent="RBX0_27">
 				<Properties>
 					<token name="Shape">0</token>
 					<token name="formFactorRaw">0</token>
@@ -1630,7 +1630,7 @@ Tool.Activated:connect(onActivated)
 					<BinaryString name="Tags"></BinaryString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
-				<Item class="Sound" referent="RBX28">
+				<Item class="Sound" referent="RBX0_28">
 					<Properties>
 						<Content name="SoundId">
 							<url>rbxasset://sounds//short spring sound.wav</url>
@@ -1655,7 +1655,7 @@ Tool.Activated:connect(onActivated)
 					</Properties>
 				</Item>
 			</Item>
-			<Item class="LocalScript" referent="RBX29">
+			<Item class="LocalScript" referent="RBX0_29">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -1708,7 +1708,7 @@ Tool.Changed:connect(OnChanged)
 				</Properties>
 			</Item>
 		</Item>
-		<Item class="Tool" referent="RBX30">
+		<Item class="Tool" referent="RBX0_30">
 			<Properties>
 				<bool name="CanBeDropped">true</bool>
 				<bool name="Enabled">true</bool>
@@ -1738,7 +1738,7 @@ Tool.Changed:connect(OnChanged)
 				<BinaryString name="Tags"></BinaryString>
 				<BinaryString name="AttributesSerialize"></BinaryString>
 			</Properties>
-			<Item class="Script" referent="RBX31">
+			<Item class="Script" referent="RBX0_31">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -1929,7 +1929,7 @@ connection = sword.Touched:connect(blow)
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Part" referent="RBX32">
+			<Item class="Part" referent="RBX0_32">
 				<Properties>
 					<token name="Shape">1</token>
 					<token name="formFactorRaw">2</token>
@@ -2025,7 +2025,7 @@ connection = sword.Touched:connect(blow)
 					<BinaryString name="Tags"></BinaryString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
-				<Item class="SpecialMesh" referent="RBX33">
+				<Item class="SpecialMesh" referent="RBX0_33">
 					<Properties>
 						<token name="MeshType">5</token>
 						<Content name="MeshId">
@@ -2055,7 +2055,7 @@ connection = sword.Touched:connect(blow)
 						<BinaryString name="AttributesSerialize"></BinaryString>
 					</Properties>
 				</Item>
-				<Item class="Sound" referent="RBX34">
+				<Item class="Sound" referent="RBX0_34">
 					<Properties>
 						<Content name="SoundId">
 							<url>rbxasset://sounds/swordslash.wav</url>
@@ -2079,7 +2079,7 @@ connection = sword.Touched:connect(blow)
 						<BinaryString name="AttributesSerialize"></BinaryString>
 					</Properties>
 				</Item>
-				<Item class="Sound" referent="RBX35">
+				<Item class="Sound" referent="RBX0_35">
 					<Properties>
 						<Content name="SoundId">
 							<url>rbxasset://sounds/swordlunge.wav</url>
@@ -2103,7 +2103,7 @@ connection = sword.Touched:connect(blow)
 						<BinaryString name="AttributesSerialize"></BinaryString>
 					</Properties>
 				</Item>
-				<Item class="Sound" referent="RBX36">
+				<Item class="Sound" referent="RBX0_36">
 					<Properties>
 						<Content name="SoundId">
 							<url>rbxasset://sounds/unsheath.wav</url>
@@ -2128,7 +2128,7 @@ connection = sword.Touched:connect(blow)
 					</Properties>
 				</Item>
 			</Item>
-			<Item class="LocalScript" referent="RBX37">
+			<Item class="LocalScript" referent="RBX0_37">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -2174,7 +2174,7 @@ Tool.Changed:connect(OnChanged)
 				</Properties>
 			</Item>
 		</Item>
-		<Item class="Tool" referent="RBX38">
+		<Item class="Tool" referent="RBX0_38">
 			<Properties>
 				<bool name="CanBeDropped">true</bool>
 				<bool name="Enabled">true</bool>
@@ -2204,7 +2204,7 @@ Tool.Changed:connect(OnChanged)
 				<BinaryString name="Tags"></BinaryString>
 				<BinaryString name="AttributesSerialize"></BinaryString>
 			</Properties>
-			<Item class="Part" referent="RBX39">
+			<Item class="Part" referent="RBX0_39">
 				<Properties>
 					<token name="Shape">0</token>
 					<token name="formFactorRaw">0</token>
@@ -2300,7 +2300,7 @@ Tool.Changed:connect(OnChanged)
 					<BinaryString name="Tags"></BinaryString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
-				<Item class="SpecialMesh" referent="RBX40">
+				<Item class="SpecialMesh" referent="RBX0_40">
 					<Properties>
 						<token name="MeshType">5</token>
 						<Content name="MeshId">
@@ -2331,7 +2331,7 @@ Tool.Changed:connect(OnChanged)
 					</Properties>
 				</Item>
 			</Item>
-			<Item class="Script" referent="RBX41">
+			<Item class="Script" referent="RBX0_41">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -2412,7 +2412,7 @@ Tool.Activated:connect(onActivated)]]></ProtectedString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Script" referent="RBX42">
+			<Item class="Script" referent="RBX0_42">
 				<Properties>
 					<bool name="Disabled">true</bool>
 					<token name="RunContext">0</token>
@@ -2498,7 +2498,7 @@ bomb:Destroy()]]></ProtectedString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="LocalScript" referent="RBX43">
+			<Item class="LocalScript" referent="RBX0_43">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -2551,7 +2551,7 @@ Tool.Changed:connect(OnChanged)
 				</Properties>
 			</Item>
 		</Item>
-		<Item class="Tool" referent="RBX44">
+		<Item class="Tool" referent="RBX0_44">
 			<Properties>
 				<bool name="CanBeDropped">true</bool>
 				<bool name="Enabled">true</bool>
@@ -2581,7 +2581,7 @@ Tool.Changed:connect(OnChanged)
 				<BinaryString name="Tags"></BinaryString>
 				<BinaryString name="AttributesSerialize"></BinaryString>
 			</Properties>
-			<Item class="Script" referent="RBX45">
+			<Item class="Script" referent="RBX0_45">
 				<Properties>
 					<bool name="Disabled">true</bool>
 					<token name="RunContext">0</token>
@@ -2596,7 +2596,7 @@ script.Parent.Parent = nil
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="Part" referent="RBX46">
+			<Item class="Part" referent="RBX0_46">
 				<Properties>
 					<token name="Shape">1</token>
 					<token name="formFactorRaw">2</token>
@@ -2692,7 +2692,7 @@ script.Parent.Parent = nil
 					<BinaryString name="Tags"></BinaryString>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
-				<Item class="SpecialMesh" referent="RBX47">
+				<Item class="SpecialMesh" referent="RBX0_47">
 					<Properties>
 						<token name="MeshType">5</token>
 						<Content name="MeshId">
@@ -2722,7 +2722,7 @@ script.Parent.Parent = nil
 						<BinaryString name="AttributesSerialize"></BinaryString>
 					</Properties>
 				</Item>
-				<Item class="Sound" referent="RBX48">
+				<Item class="Sound" referent="RBX0_48">
 					<Properties>
 						<Content name="SoundId">
 							<url>rbxasset://sounds//bass.wav</url>
@@ -2747,7 +2747,7 @@ script.Parent.Parent = nil
 					</Properties>
 				</Item>
 			</Item>
-			<Item class="Script" referent="RBX49">
+			<Item class="Script" referent="RBX0_49">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -2848,7 +2848,7 @@ script.Parent.Activated:connect(onActivated)
 					<BinaryString name="AttributesSerialize"></BinaryString>
 				</Properties>
 			</Item>
-			<Item class="LocalScript" referent="RBX50">
+			<Item class="LocalScript" referent="RBX0_50">
 				<Properties>
 					<bool name="Disabled">false</bool>
 					<token name="RunContext">0</token>
@@ -2894,6 +2894,534 @@ Tool.Unequipped:connect(OnUnequipped)
 Tool.Changed:connect(OnChanged)
 ]]></ProtectedString>
 					<string name="Name">MouseIcon</string>
+					<bool name="Archivable">true</bool>
+					<BinaryString name="Tags"></BinaryString>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+				</Properties>
+			</Item>
+		</Item>
+	</Item>
+<Item class="ReplicatedStorage" referent="RBX1_0">
+		<Properties>
+			<string name="Name">ReplicatedStorage</string>
+			<bool name="Archivable">true</bool>
+			<BinaryString name="Tags"></BinaryString>
+			<BinaryString name="AttributesSerialize"></BinaryString>
+		</Properties>
+		<Item class="ModuleScript" referent="RBX1_1">
+			<Properties>
+				<ProtectedString name="Source"><![CDATA[local HandleReload = {}
+
+local TweenService = game:GetService("TweenService")
+local Gui = script:WaitForChild("ReloadGui")
+
+local Player = game.Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+function HandleReload.new(Tool, ReloadTime)
+	local Character = Player.Character
+	local myScreenGui = Gui:Clone()
+	local AncestryConnection = Tool.AncestryChanged:Connect(function(old, new)
+		myScreenGui.Enabled = new == Character
+	end)
+	myScreenGui.Parent = PlayerGui
+	local myTweenInfo = TweenInfo.new(ReloadTime, Enum.EasingStyle.Linear)
+	local myTween = TweenService:Create(myScreenGui:FindFirstChild("ProgressFrame", true), myTweenInfo, {Size = UDim2.new(1, 0, 1, 0)})
+	myTween:Play()
+	myTween.Completed:connect(function()
+		--could be flashier
+		myScreenGui:Destroy()
+		AncestryConnection:Disconnect()
+	end)
+end
+
+
+
+
+
+
+
+return HandleReload]]></ProtectedString>
+				<string name="Name">HandleReload</string>
+				<bool name="Archivable">true</bool>
+				<BinaryString name="Tags"></BinaryString>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+			</Properties>
+			<Item class="ScreenGui" referent="RBX1_2">
+				<Properties>
+					<int name="DisplayOrder">0</int>
+					<bool name="IgnoreGuiInset">false</bool>
+					<token name="ScreenInsets">2</token>
+					<token name="SafeAreaCompatibility">1</token>
+					<bool name="ClipToDeviceSafeArea">true</bool>
+					<bool name="Enabled">true</bool>
+					<bool name="ResetOnSpawn">true</bool>
+					<token name="ZIndexBehavior">0</token>
+					<string name="Name">ReloadGui</string>
+					<bool name="Archivable">true</bool>
+					<BinaryString name="Tags"></BinaryString>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+				</Properties>
+				<Item class="ImageLabel" referent="RBX1_3">
+					<Properties>
+						<Content name="Image">
+							<url>rbxassetid://1013125588</url>
+						</Content>
+						<Color3 name="ImageColor3">
+							<R>0.43529415</R>
+							<G>0.43529415</G>
+							<B>0.43529415</B>
+						</Color3>
+						<float name="ImageTransparency">0</float>
+						<Vector2 name="ImageRectOffset">
+							<X>0</X>
+							<Y>0</Y>
+						</Vector2>
+						<Vector2 name="ImageRectSize">
+							<X>0</X>
+							<Y>0</Y>
+						</Vector2>
+						<token name="ScaleType">1</token>
+						<Rect2D name="SliceCenter">
+							<min>
+								<X>16</X>
+								<Y>16</Y>
+							</min>
+							<max>
+								<X>48</X>
+								<Y>48</Y>
+							</max>
+						</Rect2D>
+						<float name="SliceScale">1</float>
+						<UDim2 name="TileSize">
+							<XS>1</XS>
+							<XO>0</XO>
+							<YS>1</YS>
+							<YO>0</YO>
+						</UDim2>
+						<token name="ResampleMode">0</token>
+						<UDim2 name="Position">
+							<XS>0.5</XS>
+							<XO>0</XO>
+							<YS>1</YS>
+							<YO>-70</YO>
+						</UDim2>
+						<UDim2 name="Size">
+							<XS>0.2</XS>
+							<XO>0</XO>
+							<YS>0.2</YS>
+							<YO>0</YO>
+						</UDim2>
+						<token name="AutomaticSize">0</token>
+						<Vector2 name="AnchorPoint">
+							<X>0.5</X>
+							<Y>1</Y>
+						</Vector2>
+						<float name="Rotation">0</float>
+						<Color3 name="BackgroundColor3">
+							<R>0.9725491</R>
+							<G>0.9725491</G>
+							<B>0.9725491</B>
+						</Color3>
+						<float name="BackgroundTransparency">1</float>
+						<Color3 name="BorderColor3">
+							<R>0.10588236</R>
+							<G>0.16470589</G>
+							<B>0.20784315</B>
+						</Color3>
+						<int name="BorderSizePixel">1</int>
+						<bool name="Visible">true</bool>
+						<int name="ZIndex">2</int>
+						<int name="LayoutOrder">0</int>
+						<bool name="Active">false</bool>
+						<bool name="ClipsDescendants">false</bool>
+						<bool name="Draggable">false</bool>
+						<string name="Name">Container</string>
+						<bool name="Archivable">true</bool>
+						<BinaryString name="Tags"></BinaryString>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+					</Properties>
+					<Item class="UIAspectRatioConstraint" referent="RBX1_4">
+						<Properties>
+							<float name="AspectRatio">10</float>
+							<token name="AspectType">0</token>
+							<token name="DominantAxis">1</token>
+							<string name="Name">UIAspectRatioConstraint</string>
+							<bool name="Archivable">true</bool>
+							<BinaryString name="Tags"></BinaryString>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+						</Properties>
+					</Item>
+					<Item class="ImageLabel" referent="RBX1_5">
+						<Properties>
+							<Content name="Image">
+								<url>rbxassetid://1013125588</url>
+							</Content>
+							<Color3 name="ImageColor3">
+								<R>0.23137257</R>
+								<G>0.23137257</G>
+								<B>0.23137257</B>
+							</Color3>
+							<float name="ImageTransparency">0.6</float>
+							<Vector2 name="ImageRectOffset">
+								<X>0</X>
+								<Y>0</Y>
+							</Vector2>
+							<Vector2 name="ImageRectSize">
+								<X>0</X>
+								<Y>0</Y>
+							</Vector2>
+							<token name="ScaleType">1</token>
+							<Rect2D name="SliceCenter">
+								<min>
+									<X>16</X>
+									<Y>16</Y>
+								</min>
+								<max>
+									<X>48</X>
+									<Y>48</Y>
+								</max>
+							</Rect2D>
+							<float name="SliceScale">1</float>
+							<UDim2 name="TileSize">
+								<XS>1</XS>
+								<XO>0</XO>
+								<YS>1</YS>
+								<YO>0</YO>
+							</UDim2>
+							<token name="ResampleMode">0</token>
+							<UDim2 name="Position">
+								<XS>0</XS>
+								<XO>3</XO>
+								<YS>0</YS>
+								<YO>3</YO>
+							</UDim2>
+							<UDim2 name="Size">
+								<XS>1</XS>
+								<XO>0</XO>
+								<YS>1</YS>
+								<YO>0</YO>
+							</UDim2>
+							<token name="AutomaticSize">0</token>
+							<Vector2 name="AnchorPoint">
+								<X>0</X>
+								<Y>0</Y>
+							</Vector2>
+							<float name="Rotation">0</float>
+							<Color3 name="BackgroundColor3">
+								<R>0.9725491</R>
+								<G>0.9725491</G>
+								<B>0.9725491</B>
+							</Color3>
+							<float name="BackgroundTransparency">1</float>
+							<Color3 name="BorderColor3">
+								<R>0.10588236</R>
+								<G>0.16470589</G>
+								<B>0.20784315</B>
+							</Color3>
+							<int name="BorderSizePixel">1</int>
+							<bool name="Visible">true</bool>
+							<int name="ZIndex">1</int>
+							<int name="LayoutOrder">0</int>
+							<bool name="Active">false</bool>
+							<bool name="ClipsDescendants">false</bool>
+							<bool name="Draggable">false</bool>
+							<string name="Name">Shadow</string>
+							<bool name="Archivable">true</bool>
+							<BinaryString name="Tags"></BinaryString>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+						</Properties>
+					</Item>
+					<Item class="TextLabel" referent="RBX1_6">
+						<Properties>
+							<string name="Text">Reloading</string>
+							<Color3 name="TextColor3">
+								<R>0.7725491</R>
+								<G>0.96470594</G>
+								<B>1</B>
+							</Color3>
+							<float name="TextSize">14</float>
+							<bool name="TextScaled">true</bool>
+							<bool name="TextWrapped">true</bool>
+							<float name="TextTransparency">0</float>
+							<Color3 name="TextStrokeColor3">
+								<R>0</R>
+								<G>0</G>
+								<B>0</B>
+							</Color3>
+							<float name="TextStrokeTransparency">1</float>
+							<token name="TextXAlignment">0</token>
+							<token name="TextYAlignment">1</token>
+							<Font name="FontFace">
+								<Family>
+									<url>rbxasset://fonts/families/SourceSansPro.json</url>
+								</Family>
+								<Weight>400</Weight>
+								<Style>Italic</Style>
+							</Font>
+							<bool name="RichText">false</bool>
+							<token name="TextTruncate">0</token>
+							<UDim2 name="Position">
+								<XS>0</XS>
+								<XO>2</XO>
+								<YS>0.5</YS>
+								<YO>0</YO>
+							</UDim2>
+							<UDim2 name="Size">
+								<XS>1</XS>
+								<XO>0</XO>
+								<YS>0.85</YS>
+								<YO>0</YO>
+							</UDim2>
+							<token name="AutomaticSize">0</token>
+							<Vector2 name="AnchorPoint">
+								<X>0</X>
+								<Y>0.5</Y>
+							</Vector2>
+							<float name="Rotation">0</float>
+							<Color3 name="BackgroundColor3">
+								<R>1</R>
+								<G>1</G>
+								<B>1</B>
+							</Color3>
+							<float name="BackgroundTransparency">1</float>
+							<Color3 name="BorderColor3">
+								<R>0.10588236</R>
+								<G>0.16470589</G>
+								<B>0.20784315</B>
+							</Color3>
+							<int name="BorderSizePixel">1</int>
+							<bool name="Visible">true</bool>
+							<int name="ZIndex">3</int>
+							<int name="LayoutOrder">0</int>
+							<bool name="Active">false</bool>
+							<bool name="ClipsDescendants">false</bool>
+							<bool name="Draggable">false</bool>
+							<string name="Name">TextLabel</string>
+							<bool name="Archivable">true</bool>
+							<BinaryString name="Tags"></BinaryString>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+						</Properties>
+					</Item>
+					<Item class="Frame" referent="RBX1_7">
+						<Properties>
+							<UDim2 name="Position">
+								<XS>0</XS>
+								<XO>0</XO>
+								<YS>0</YS>
+								<YO>0</YO>
+							</UDim2>
+							<UDim2 name="Size">
+								<XS>0</XS>
+								<XO>0</XO>
+								<YS>1</YS>
+								<YO>0</YO>
+							</UDim2>
+							<token name="AutomaticSize">0</token>
+							<Vector2 name="AnchorPoint">
+								<X>0</X>
+								<Y>0</Y>
+							</Vector2>
+							<float name="Rotation">0</float>
+							<Color3 name="BackgroundColor3">
+								<R>1</R>
+								<G>1</G>
+								<B>1</B>
+							</Color3>
+							<float name="BackgroundTransparency">1</float>
+							<Color3 name="BorderColor3">
+								<R>0.10588236</R>
+								<G>0.16470589</G>
+								<B>0.20784315</B>
+							</Color3>
+							<int name="BorderSizePixel">1</int>
+							<bool name="Visible">true</bool>
+							<int name="ZIndex">1</int>
+							<int name="LayoutOrder">0</int>
+							<bool name="Active">false</bool>
+							<bool name="ClipsDescendants">true</bool>
+							<bool name="Draggable">false</bool>
+							<string name="Name">ProgressFrame</string>
+							<bool name="Archivable">true</bool>
+							<BinaryString name="Tags"></BinaryString>
+							<BinaryString name="AttributesSerialize"></BinaryString>
+						</Properties>
+						<Item class="ImageLabel" referent="RBX1_8">
+							<Properties>
+								<Content name="Image">
+									<url>rbxassetid://1013125588</url>
+								</Content>
+								<Color3 name="ImageColor3">
+									<R>1</R>
+									<G>0.7843138</G>
+									<B>0.6313726</B>
+								</Color3>
+								<float name="ImageTransparency">0.6</float>
+								<Vector2 name="ImageRectOffset">
+									<X>0</X>
+									<Y>0</Y>
+								</Vector2>
+								<Vector2 name="ImageRectSize">
+									<X>0</X>
+									<Y>0</Y>
+								</Vector2>
+								<token name="ScaleType">1</token>
+								<Rect2D name="SliceCenter">
+									<min>
+										<X>16</X>
+										<Y>16</Y>
+									</min>
+									<max>
+										<X>48</X>
+										<Y>48</Y>
+									</max>
+								</Rect2D>
+								<float name="SliceScale">1</float>
+								<UDim2 name="TileSize">
+									<XS>1</XS>
+									<XO>0</XO>
+									<YS>1</YS>
+									<YO>0</YO>
+								</UDim2>
+								<token name="ResampleMode">0</token>
+								<UDim2 name="Position">
+									<XS>0</XS>
+									<XO>0</XO>
+									<YS>0</YS>
+									<YO>0</YO>
+								</UDim2>
+								<UDim2 name="Size">
+									<XS>0</XS>
+									<XO>256</XO>
+									<YS>0</YS>
+									<YO>26</YO>
+								</UDim2>
+								<token name="AutomaticSize">0</token>
+								<Vector2 name="AnchorPoint">
+									<X>0</X>
+									<Y>0</Y>
+								</Vector2>
+								<float name="Rotation">0</float>
+								<Color3 name="BackgroundColor3">
+									<R>0.9725491</R>
+									<G>0.9725491</G>
+									<B>0.9725491</B>
+								</Color3>
+								<float name="BackgroundTransparency">1</float>
+								<Color3 name="BorderColor3">
+									<R>0.10588236</R>
+									<G>0.16470589</G>
+									<B>0.20784315</B>
+								</Color3>
+								<int name="BorderSizePixel">1</int>
+								<bool name="Visible">true</bool>
+								<int name="ZIndex">5</int>
+								<int name="LayoutOrder">0</int>
+								<bool name="Active">false</bool>
+								<bool name="ClipsDescendants">false</bool>
+								<bool name="Draggable">false</bool>
+								<string name="Name">Progress</string>
+								<bool name="Archivable">true</bool>
+								<BinaryString name="Tags"></BinaryString>
+								<BinaryString name="AttributesSerialize"></BinaryString>
+							</Properties>
+						</Item>
+					</Item>
+				</Item>
+				<Item class="LocalScript" referent="RBX1_9">
+					<Properties>
+						<bool name="Disabled">false</bool>
+						<token name="RunContext">0</token>
+						<ProtectedString name="Source"><![CDATA[local ScreenGui = script.Parent
+local Progress = ScreenGui:FindFirstChild("Progress", true)
+local Container = ScreenGui:FindFirstChild("Container", true)
+local function ResizeProgress()
+	Progress.Size = UDim2.new(0, Container.AbsoluteSize.X, 0, Container.AbsoluteSize.Y)
+end
+
+Container:GetPropertyChangedSignal("AbsoluteSize"):connect(ResizeProgress)
+ResizeProgress()]]></ProtectedString>
+						<string name="Name">LocalScript</string>
+						<bool name="Archivable">true</bool>
+						<BinaryString name="Tags"></BinaryString>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+					</Properties>
+				</Item>
+			</Item>
+		</Item>
+	</Item>
+<Item class="ServerStorage" referent="RBX2_0">
+		<Properties>
+			<string name="Name">ServerStorage</string>
+			<bool name="Archivable">true</bool>
+			<BinaryString name="Tags"></BinaryString>
+			<BinaryString name="AttributesSerialize"></BinaryString>
+		</Properties>
+		<Item class="Folder" referent="RBX2_1">
+			<Properties>
+				<Color3 name="IconTint">
+					<R>0</R>
+					<G>0</G>
+					<B>0</B>
+				</Color3>
+				<string name="Name">Modules</string>
+				<bool name="Archivable">true</bool>
+				<BinaryString name="Tags"></BinaryString>
+				<BinaryString name="AttributesSerialize"></BinaryString>
+			</Properties>
+			<Item class="ModuleScript" referent="RBX2_2">
+				<Properties>
+					<ProtectedString name="Source"><![CDATA[local Modules = game:GetService("ServerStorage"):FindFirstChild("Modules")
+local tagHumanoid = require(Modules:FindFirstChild("tagHumanoid"))
+local PartsThatHaveBeenHit = {}
+
+local function onExplosionHit(tag, hit)
+	local char = hit:FindFirstAncestorWhichIsA("Model")
+	if char then
+		local humanoid = char:FindFirstChild("Humanoid")
+		if humanoid then
+			tagHumanoid(tag, humanoid)
+			humanoid:TakeDamage(999)
+		else
+			hit:BreakJoints()
+		end
+	end
+end
+
+return function(tag, position)
+	local explosion = Instance.new("Explosion")
+	explosion.BlastPressure = 1600000
+	explosion.DestroyJointRadiusPercent = 100
+	explosion.Position = position
+	tag:Clone().Parent = explosion
+	explosion.Hit:Connect(function(hit) onExplosionHit(tag, hit) end)
+	explosion.Parent = workspace
+end]]></ProtectedString>
+					<string name="Name">doExplosion</string>
+					<bool name="Archivable">true</bool>
+					<BinaryString name="Tags"></BinaryString>
+					<BinaryString name="AttributesSerialize"></BinaryString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX2_3">
+				<Properties>
+					<ProtectedString name="Source"><![CDATA[local debris = game:GetService("Debris")
+
+function tagHumanoid(tag, humanoid)
+	if tag ~= nil then
+		-- kill all other tags
+		while(humanoid:findFirstChild("creator") ~= nil) do
+			humanoid:findFirstChild("creator").Parent = nil
+		end
+
+		local new_tag = tag:clone()
+		new_tag.Parent = humanoid
+		debris:AddItem(new_tag, 1)
+	end
+end
+
+return tagHumanoid]]></ProtectedString>
+					<string name="Name">tagHumanoid</string>
 					<bool name="Archivable">true</bool>
 					<BinaryString name="Tags"></BinaryString>
 					<BinaryString name="AttributesSerialize"></BinaryString>

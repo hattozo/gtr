@@ -427,6 +427,107 @@ GTA V Enhanced (story mode)                         gtr-guest.exe (Vanadium + gu
   changes the engine heavily and breaks the guest, so it waits until the owner asks for the merge. The patch stays
   applied but uncommitted in the submodule's tree. `build-guest.ps1 -Clone` now checks out the pinned commit instead of
   cloning `..\vanadium`, which it only reads for its downloaded `.cache`.
+- **Eighteenth batch (3 Oct), installed; not yet measured in the game:** "the bridge is laggy: the character is
+  choppy and slow while GTA runs fine". It wasn't the link. The guest's log, with GTA (borderless, 1920x1080, vsync on
+  a 200 Hz display) in front, showed 12 to 33 frames a second exported, Present at 41 to 55 ms of a 50 to 63 ms frame;
+  with GTA unfocused it was 88, and GTA's own rate fell from ~100 to ~36. The RTX 2070 goes to the window with the focus,
+  and GTA, GPU-bound, leaves the guest almost none. Frames over 50 ms also lose simulated time (`World::Step` takes 12
+  substeps of 1/240 s a frame at most), hence *slow* as well as choppy.
+  - Engine patch: `GpuContext::SetVSync`, mailbox where the adapter offers it, else immediate. The guest turns vsync
+    off, and a `GtrPace` job (priority -1, `main.cpp`) holds it to the display's refresh rate with a high-resolution
+    waitable timer instead (`--fps`/`-Fps` for another).
+  - The guest's GPU scheduling class is set to HIGH (`D3DKMTSetProcessSchedulingPriorityClass`, from gdi32), beside the
+    HIGH CPU priority and no power throttling it already asked for.
+  - Measured with those two in, GTA in front: still 12 to 40 a second, Present up to 72 ms. With mailbox the time is
+    the swapchain waiting on the guest's own GPU work, which GTA is ahead of; the priority class is accepted but, with
+    the GPU's own scheduler on (Windows 11's default; `HwSchMode` unset), does nothing visible.
+  - So the compositor now holds each of GTA's frames, 25 ms at most, until the guest has published a newer frame than
+    the last it saw (`wait_for_guest`, on the guest's `Local\GtrPassthroughPublished` event); a guest silent for
+    200 ms isn't waited for. GTA is held to the guest's rate, and the GPU it leaves is what the guest draws with.
+    `GtrHostState::FreeRunning` (out of Padding) turns it off: `send.py '{"t":"host","op":"lockstep","on":0}'`.
+    `test_compositor` passes. Its "newest frame shows the lag" control failed at first (0 magenta pixels): held for each
+    new guest frame, the newest frame was no longer behind. fakegta's `orbit-unsynced` now sets FreeRunning, as before.
+  - In the game, GTA in front: the guest exported 50 to 67 frames a second (from 12 to 33), Present 2 to 6 ms, GTA held
+    to ~48. The bridge's `publish`, copying each frame out of the GPU's readback memory into the shared memory (mostly the
+    interface's whole 8 MB picture), was now 6 to 7 ms of a 16 ms frame: it moved to a writer thread of the exporter's
+    own (`WriteQueued`), the only writer of the slots. Then 78 to 110 a second, `publish` 0.05 ms, `GtrBridge` 0.2 ms.
+  - A `perf` message sets the guest's frame rate cap (`fps`, 0 for the display's) and render quality level (`quality`,
+    1 to 21, 0 automatic) while it runs, to measure what its frames cost GTA.
+  - Measured with it, GTA in front, 30 to 40 s a setting (GTA's rate from the script's every-600th-frame lines, so
+    rough): GTA ~47 a second whether the guest drew at automatic quality or level 10, capped at 200 or 75; and 44 to 46
+    with the lockstep off against 34 to 49 with it on, the guest at 78 to 110 throughout. The guest no longer holds GTA
+    back. The player had moved downtown by then, where GTA is slower by itself.
+  - The script now logs its own cost a tick by part (heard, play, ground, bodies, rest) and GTA's whole frame with each
+    "frame" line, to see whether its 184 `GET_GROUND_Z_FOR_3D_COORD` probes a tick are what is left. Built, not yet
+    installed (needs GTA closed).
+  - Installed later the same day, with the two below. "The whole picture looks a little low frame rate": GTA's, since the
+    guest now outruns it. The interface's picture (8 MB at 1080p) was uploaded into GTA's device on its render thread
+    for each new guest frame, nearly every GTA frame now, though it seldom changes. The writer thread compares each
+    with the last and numbers it anew only when it differs (`GtrFrameSlot::GuiVersion`, out of Padding; a slot already
+    holding that picture isn't written), and the compositor uploads only a new number. Checked in the shared memory:
+    one number while the interface is still, the same picture in every slot under it, and a new one with a frame added.
+- **Cars and trowel walls (3 Oct), installed; the drivers not yet seen in the game:** "cars should respond to bricks in
+  front of them, and smoothly knock trowel walls over when they are frustrated". GTA's drivers couldn't see the guest's
+  things, and `CrashVehicles` resolved a car's 1500 kg against one brick's mass at a time, teleporting it out and
+  setting its velocity: the wall was shot along the ground.
+  - The guest's `LookAhead`: in front of each vehicle box, as far as it goes in 2 s (4 to 40 m), the nearest of the
+    guest's things that is neither flying (over 3 m/s) nor tiny (under 0.3 m), sent as `blocked` {id, gap} every 100 ms.
+  - The script's `hold_blocked`: a driver (not a player, not the character's ride) is held to the speed it could still
+    stop from (7 m/s² to 0.8 m short), with brake lights; stopped, it sounds its horn now and then and after 3 to 7 s
+    loses patience, leans on the horn and rolls on at 2.2 m/s. Its own task runs on throughout, so it drives off as it
+    was once nothing has been reported for 0.5 s.
+  - `CrashVehicles` now meets a trowel wall (its bricks joined by MakeJoints into columns, loose on the smooth ground)
+    as one assembly by its whole mass, moves it out by exactly its overlap, and pushes it with an impulse where the
+    car's front meets it highest, so it topples. A continuous "lean" (keeping the contact point at the car's speed
+    every frame) was tried and only slid the column along upright on the low-friction ground; repeated strikes at a
+    2.2 m/s roll move it centimetres each and tip it over.
+  - `host/test_walls.py`: told of the wall from 22 m at 10 m/s, the gap right to the centimetre, still told while stopped
+    0.8 m short; rolled into, the column in the car's way goes from 1.47 m to 0.35 m high, lying flat, no brick faster
+    than 3.3 m/s, the car slowed by under 3 m/s and not dented. `test_bodies` still passes.
+- **Building tools froze people and pulled out drivers (3 Oct):** with a building bin merely out, `FollowTools` took any
+  box that was off where the host had put it for one the tool had dragged, and sent `move` (a person is put there and
+  stopped, which froze them; a rider's box is its driver, who was taken out of the seat), and any box gone from its parent
+  for one the hammer took, and sent `delete`. Neither physics nor a turn moved the boxes in the live guest (none in 240
+  frames), and the engine's bins only set the cursor on hover, so what nudged them wasn't found. Now a move needs the
+  engine's own mark of a drag (`BasePart::IsDragged`, set by `BeginDrag`, and 350 ms after for the drop), and a delete
+  needs the Hammer out; a box lost otherwise is made again and logged. Installed; `host/test_buildtools.py` passes (with
+  Move out, hovering people, a driver and a car sends nothing; a box nudged by a script is put back unsent; one destroyed
+  without the Hammer is made again, not deleted; a real drag sends 10 moves; the Hammer still deletes). Not yet seen in GTA.
+- **Franklin muted (3 Oct):** while the guest is played, each tick `STOP_PED_SPEAKING`, `DISABLE_PED_PAIN_AUDIO` and both
+  `STOP_CURRENT_PLAYING_*SPEECH` on the player; undone in `stop_playing`. It cuts the player's lines in scripted
+  dialogue too while the passthrough is on. Installed; not yet heard in the game.
+- **Pacing to GTA's ticks (3 Oct):** measured from `GtrHostState::Heartbeat` (exact, 8 s windows, three rounds, while
+  played): defaults GTA 39 / guest 92; guest capped at 30, GTA 30.5 (held by the lockstep); guest at quality 1, GTA 34 /
+  guest 117; lockstep off, GTA 48 (to 81) / guest 72 (to 35). The GPU is shared, and the guest drew two frames in three
+  for nothing. The script's own cost: 3 to 6 ms of a 23 to 33 ms frame (ground ~2, bodies ~0.9, messages to 3).
+  `FramePacer::FollowHost` now waits, after the refresh-rate cap, for the host's heartbeat to move (500 us polls, 33 ms
+  at most, not at all once it has stopped for 200 ms): one guest frame for each GTA tick.
+  Measured the same way after: GTA 56 / guest 56 (from 39 / 92); with the lockstep off GTA 57.5, so it costs next to nothing now.
+- **The paintball gun paints GTA's things (3 Oct), installed; not yet seen in the game:** the classic gun's ball sets
+  `hit.BrickColor` on anything under 240 mass, which a car's and a person's box are. The guest's `ReportPaint` tells the
+  host of any box whose colour changed (`paint` {id, color}); a rider's box is its driver.
+  - Vehicles: `SET_VEHICLE_CUSTOM_PRIMARY/SECONDARY_COLOUR`, body and trim.
+  - People and props, which GTA has no native to colour freely: the script keeps them (`g_painted`) and each tick writes
+    the 16 nearest within 120 m as boxes (their model's, 4% larger, 2 cm off the ground) in that tick's camera space to
+    a new mapping, `Local\GtrPassthroughPaint` (`GtrPaintState`). The compositor hands them to the effect as one array
+    (`GtrPaint`), and the final pass gives GTA's surfaces inside a box the paint's colour at their own lightness (85%,
+    softened over the box's outer 2%).
+  - `publish_sun` returned before publishing the camera's FOV and up whenever there was no sun (night, indoors), so the
+    effect kept stale ones; it publishes them first now. Found by the new check, whose first picture had a red triangle
+    across the pillar for want of the FOV.
+  - `test_compositor` paints fakegta's pillar red (`paint` mode): 99.75% of it red, the ground round it 100% unchanged.
+    `test_buildtools` fires the gun at a person and a car: both told to the host with the ball's colour.
+  - Its "newest frame shows the lag" control came out at 0 once in four runs since the guest draws on GTA's ticks: the
+    unsynced picture can happen to match. The locked check stayed at 0 throughout.
+- **Rockets, bombs and gun cursors broken (3 Oct):** not this batch. `places/Tools.rbxlx` (written 2 Oct, 23:08) held
+  the StarterPack alone, and the tools `require` ServerStorage.Modules.doExplosion (rocket, bomb) and wait on
+  ReplicatedStorage.HandleReload (the guns' MouseIcon scripts): "attempt to index nil with 'FindFirstChild'" on their
+  first line, and the cursors never set. `make-tools-place.py` now saves those two services too, trimmed to what the
+  tools need, and merges the three saves with their referents renamed apart; the place was written again from
+  `Classic-Crossroads.rbxl`. Both modules `require` in the guest, and the infinite-yield warnings are gone.
+  - Next if it is still short: the GUI layer is read back and copied whole (8 MB at 1080p) every frame by the guest,
+    and uploaded whole into GTA's device by the compositor, though it rarely changes; the export view draws at the
+    automatic quality level (4x MSAA, AO and bloom at the top); and the guest is a Debug build.
 
 ## In the game
 

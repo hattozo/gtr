@@ -14,7 +14,8 @@
 // brick exactly over it none of it shows, and any that does is the two pictures being of different cameras.
 //
 // orbit-unsynced swings the same way but draws from the newest camera and marks nothing, which is how things were before:
-// magenta shows, and that it does is the check that the test can fail.
+// magenta shows, and that it does is the check that the test can fail. It also leaves the compositor free running: held for
+// each new guest frame, the newest frame is new enough that next to no magenta shows.
 //
 // host/test_compositor.py runs all three and checks the pictures.
 #include <winsock2.h>
@@ -249,7 +250,7 @@ int main(int argc, char **argv)
 {
 	if (argc < 10)
 	{
-		std::puts("usage: fakegta eyeX eyeY eyeZ targetX targetY targetZ fovY seconds capture.bmp [still|sun|orbit|orbit-unsynced]");
+		std::puts("usage: fakegta eyeX eyeY eyeZ targetX targetY targetZ fovY seconds capture.bmp [still|sun|paint|orbit|orbit-unsynced]");
 		return 2;
 	}
 	const double eye[3] = {std::atof(argv[1]), std::atof(argv[2]), std::atof(argv[3])};
@@ -259,8 +260,8 @@ int main(int argc, char **argv)
 	const double seconds = std::atof(argv[8]);
 	const char *capturePath = argv[9];
 	const std::string mode = argc > 10 ? argv[10] : "still";
-	const bool sunny = mode == "sun";
-	const bool orbits = mode != "still" && !sunny, synced = mode == "orbit";
+	const bool sunny = mode == "sun", painting = mode == "paint";
+	const bool orbits = mode == "orbit" || mode == "orbit-unsynced", synced = mode == "orbit";
 	if (!rotation_math_agrees(start))
 	{
 		std::puts("gta_math.h's camera axes disagree with the look-at's");
@@ -281,8 +282,21 @@ int main(int argc, char **argv)
 	state->Active = 1;
 	state->NearClip = kNear;
 	state->FarClip = kFar;
+	state->FreeRunning = orbits && !synced ? 1 : 0;
 	strncpy_s(state->CapturePath, capturePath, _TRUNCATE);
 	state->Magic = GTR_HOST_MAGIC;
+	// Painting, as the real script paints a person or a prop the paintball gun hit: the pillar, red, in a box of its own
+	GtrPaintState *paint = nullptr;
+	if (painting)
+	{
+		const HANDLE paintMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(GtrPaintState), GTR_PAINT_MAPPING_NAME);
+		paint = paintMapping != nullptr ? static_cast<GtrPaintState *>(MapViewOfFile(paintMapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(GtrPaintState))) : nullptr;
+		if (paint != nullptr)
+		{
+			std::memset(paint, 0, sizeof(*paint));
+			paint->Magic = GTR_PAINT_MAGIC;
+		}
+	}
 
 	WNDCLASSW wc = {};
 	wc.lpfnWndProc = wndproc;
@@ -502,6 +516,28 @@ int main(int argc, char **argv)
 		if (matched)
 			drawn = asked[newest % kHistory];
 		state->TickCamera[tick] = matched ? newest : 0;
+		if (paint != nullptr)
+		{
+			// The pillar's box (see add_box below: turned 15 degrees), off the ground by a little, in the drawn camera's space
+			const float turn = 15.0f * 3.14159265f / 180.0f;
+			const float centre[3] = {float(kOrigin[0] + 1.2 - drawn.eye[0]), float(kOrigin[1] + 4.5 - drawn.eye[1]), float(kOrigin[2] + 1.32 - drawn.eye[2])};
+			const float boxAxes[3][3] = {{std::cos(turn), std::sin(turn), 0.0f}, {-std::sin(turn), std::cos(turn), 0.0f}, {0.0f, 0.0f, 1.0f}};
+			const float half[3] = {0.312f, 0.312f, 1.3f};
+			const float *cameraAxes[3] = {drawn.right, drawn.up, drawn.forward};
+			GtrPaintBox &box = paint->Boxes[0];
+			for (int i = 0; i < 3; ++i)
+			{
+				box.Centre[i] = cameraAxes[i][0] * centre[0] + cameraAxes[i][1] * centre[1] + cameraAxes[i][2] * centre[2];
+				for (int j = 0; j < 3; ++j)
+					box.Across[i][j] = (cameraAxes[j][0] * boxAxes[i][0] + cameraAxes[j][1] * boxAxes[i][1] + cameraAxes[j][2] * boxAxes[i][2]) / half[i];
+			}
+			box.Color[0] = 1.0f;
+			box.Color[1] = 0.0f;
+			box.Color[2] = 0.0f;
+			box.Strength = 0.85f;
+			paint->Count = 1;
+			state->TanHalfFov = std::tan(drawn.fov * 3.14159265358979f / 360.0f);
+		}
 		if (sunny)
 		{
 			// As the real script does: the sun in the camera's space, for the shadows the guest casts on the host

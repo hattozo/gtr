@@ -18,10 +18,13 @@
 #include "DataType/CFrame.h"
 #include "DataType/Color3.h"
 #include "DataType/SpatialQuery.h"
+#include "Util/Log.h"
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <format>
+#include <limits>
 
 using namespace Vanadium;
 using namespace Gtr;
@@ -65,6 +68,17 @@ constexpr float sCrashSpeed = 1.0f;
 constexpr std::chrono::milliseconds sCrashInterval(120);
 constexpr float sVehicleKilograms = 1500.0f;
 constexpr float sCrashBounce = 0.15f;
+// A vehicle looking ahead for the guest's things in its way: as far as it goes in this many seconds, which with the host's
+// braking (kBlockedBraking, 7 m/s each second) is room to stop from up to 85 km/h, and never nearer or farther than these (metres).
+// It tells the host again this often while something is there
+constexpr float sLookSeconds = 2.0f;
+constexpr float sLookLeast = 4.0f;
+constexpr float sLookMost = 40.0f;
+constexpr std::chrono::milliseconds sLookInterval(100);
+// What it stops for: nothing moving faster than this (metres a second: a rocket or a ball goes by), nor smaller than this
+// across (metres: a paintball). A trowel's brick is 1.4 m long
+constexpr float sObstacleSpeed = 3.0f;
+constexpr float sObstacleSize = 0.3f;
 // The character walking against a body: how near its middle has to be to the box (studs; its own half width and a little),
 // what it weighs, and how much of that a person feels, who is to be jostled and not knocked down
 constexpr float sWalkReach = 1.9f;
@@ -178,6 +192,7 @@ void HostBodies::Handle(const Json &message) {
                 // Not locked: the place's building tools take hold of a body as of a brick, and the host's thing follows
                 part->SetTransparency(mVisible ? 0.5f : 1.0f);
                 part->SetColor(sKindColors[(int)kind]);
+                body.Paint = sKindColors[(int)kind];
                 // Smooth all round: a part's studs and inlets join it to what it rests against (another box, a brick), and
                 // a joined box is held where it was joined, which read as a tool dragging it
                 for (const NormalId face : { NormalId::Right, NormalId::Top, NormalId::Back, NormalId::Left, NormalId::Bottom, NormalId::Front })
@@ -294,13 +309,29 @@ std::vector<std::string> HostBodies::Tick(const Instance *ground) {
         body.Health = health;
     }
     FollowTools();
+    ReportPaint();
     ReportProjectiles();
     OutlineHovered();
     PushByWalking();
+    LookAhead(ground);
     CrashVehicles(ground);
     std::vector<std::string> lines;
     lines.swap(mOutgoing);
     return lines;
+}
+
+// The paintball gun colours the part its ball hits, if it is light enough (a car's or a person's box is), as the classic gun
+// does. The host is told, and paints the thing that colour: a vehicle in GTA itself, body and trim, and a person or a prop,
+// which GTA can't colour, in the compositor's picture. A rider's box is its driver or passenger
+void HostBodies::ReportPaint() {
+    for (auto &[id, body] : mBodies) {
+        const auto *part = static_cast<const BasePart *>(body.Part->Target);
+        if (part == nullptr || part->GetColor() == body.Paint)
+            continue;
+        body.Paint = part->GetColor();
+        const auto byte = [](float channel) { return (int)std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f); };
+        mOutgoing.push_back(std::format("{{\"t\":\"paint\",\"id\":{},\"color\":[{},{},{}]}}", id, byte(body.Paint.R), byte(body.Paint.G), byte(body.Paint.B)));
+    }
 }
 
 // The guest has ground only round its character, bodies only near it, and of the host's walls nothing: a rocket or a ball
@@ -401,19 +432,26 @@ std::string HostBodies::PoseMessage(const char *type, int id, const BasePart &pa
 void HostBodies::FollowTools() {
     const auto now = std::chrono::steady_clock::now();
     const bool building = Building();
-    std::vector<int> hammered;
+    const bool hammering = Building(BinType::Hammer);
+    std::vector<int> hammered, lost;
     for (auto &[id, body] : mBodies) {
         auto *part = static_cast<BasePart *>(body.Part->Target);
         if (part == nullptr || part->GetParent() == nullptr) {
-            hammered.push_back(id);
+            // Only the hammer does away with the host's things. A box gone any other way is made again from the host's next list
+            (hammering ? hammered : lost).push_back(id);
             continue;
         }
+        // Only a building tool's drag moves the host's things, and the engine marks the parts it drags; a little after it lets
+        // go counts too, for where the tool sets the part down. A box moved by anything else is put back where the host has
+        // the thing: told to the host it held the host's people walking on the spot, and stopped its traffic. Merely having a
+        // building tool out once let anything that nudged a box do that, and drivers were pulled out of their seats
+        if (part->IsDragged())
+            body.DraggedUntil = now + sHeldFor;
+        const bool dragged = building && now < body.DraggedUntil;
         const CFrame &frame = part->GetCFrame();
         if ((frame.translation - body.Told.translation).Magnitude() > sDraggedStuds || frame.LookVector().Dot(body.Told.LookVector()) < sDraggedTurn ||
             frame.UpVector().Dot(body.Told.UpVector()) < sDraggedTurn) {
-            // Only a building tool moves the host's things. A box moved by anything else is put back where the host has the
-            // thing: told to the host, every frame, it held the host's people walking on the spot and its traffic stopped
-            if (!building) {
+            if (!dragged) {
                 part->SetCFrame(body.Told);
                 continue;
             }
@@ -424,8 +462,13 @@ void HostBodies::FollowTools() {
         }
     }
     for (const int id : hammered) {
+        Log::Print("Gtr", "The host's body {} was hammered", id);
         mOutgoing.push_back(std::format("{{\"t\":\"delete\",\"id\":{}}}", id));
         mDeleted[id] = now;
+        Remove(id);
+    }
+    for (const int id : lost) {
+        Log::Print("Gtr", "The host's body {} lost its box without a building tool out; it is made again", id);
         Remove(id);
     }
 
@@ -460,12 +503,12 @@ void HostBodies::FollowTools() {
     }
 }
 
-// Whether one of the place's building tools (a HopperBin) is out
-bool HostBodies::Building() const {
+// Whether one of the place's building tools (a HopperBin) is out, or that one of them is
+bool HostBodies::Building(std::optional<BinType> type) const {
     Player *player = mDataModel.GetService<Players>()->GetLocalPlayer();
     const Instance *backpack = player != nullptr ? player->FindFirstChildWhichIsA<Backpack>() : nullptr;
     for (const Instance *item : backpack != nullptr ? backpack->ViewChildren() : std::span<Instance *const>()) {
-        if (const auto *bin = dynamic_cast<const HopperBin *>(item); bin != nullptr && bin->GetActive())
+        if (const auto *bin = dynamic_cast<const HopperBin *>(item); bin != nullptr && bin->GetActive() && (!type.has_value() || bin->GetBinType() == *type))
             return true;
     }
     return false;
@@ -505,16 +548,84 @@ void HostBodies::OutlineHovered() {
     mDataModel.SetPartOutline(this, hovered, sHoverColor);
 }
 
+// Whether a part is one of the guest's own things that a vehicle meets: not a box of the host's, a wall put in a projectile's
+// way, the host's ground, or the character, which the host has as its own player
+bool HostBodies::MeetsVehicles(const BasePart *part, const Instance *ground, const Model *character) const {
+    const Instance *bodies = mFolder != nullptr ? mFolder->Target : nullptr;
+    return part != nullptr && part->GetCanCollide() && (bodies == nullptr || !part->IsDescendantOf(bodies)) &&
+           (mWallFolder == nullptr || mWallFolder->Target == nullptr || !part->IsDescendantOf(mWallFolder->Target)) &&
+           (ground == nullptr || !part->IsDescendantOf(ground)) && (character == nullptr || !part->IsDescendantOf(character));
+}
+
+// GTA's drivers can't see the guest's things, and would drive into a trowel wall at full speed. Each vehicle looks ahead of
+// itself for them, as far as it would take to stop, and the host is told how far off the nearest is: its driver slows to a
+// stop short of it, waits and sounds the horn, and in the end loses patience and pushes through (see the host's
+// hold_blocked).
+void HostBodies::LookAhead(const Instance *ground) {
+    const Player *player = mDataModel.GetService<Players>()->GetLocalPlayer();
+    const Model *character = player != nullptr ? player->GetCharacter() : nullptr;
+    const auto now = std::chrono::steady_clock::now();
+    for (auto &[id, body] : mBodies) {
+        const auto *box = body.What == Kind::Vehicle ? static_cast<const BasePart *>(body.Part->Target) : nullptr;
+        if (box == nullptr || now - body.Looked < sLookInterval)
+            continue;
+        const CFrame &frame = box->GetCFrame();
+        const Vector3 size = box->GetSize();
+        const Vector3 forward = frame.LookVector();
+        // Backing away, what is ahead isn't in the way
+        const float speed = body.Velocity.Dot(forward) * mMetresPerStud;
+        if (speed < -sObstacleSpeed)
+            continue;
+        const float reach = std::clamp(speed * sLookSeconds, sLookLeast, sLookMost) / mMetresPerStud;
+        CFrame ahead = frame;
+        ahead.translation = frame.translation + forward * ((size.Z + reach) * 0.5f);
+        float nearest = std::numeric_limits<float>::max();
+        for (Instance *found : mDataModel.GetWorkspace()->GetPartBoundsInBox(ahead, Vector3(size.X, size.Y, size.Z + reach), OverlapParams())) {
+            auto *part = dynamic_cast<BasePart *>(found);
+            if (!MeetsVehicles(part, ground, character))
+                continue;
+            // Not something flying past, or as small as a paintball
+            const Vector3 extent = part->GetSize() * 0.5f;
+            if ((!part->GetAnchored() && part->GetAssemblyLinearVelocity().Magnitude() * mMetresPerStud > sObstacleSpeed) ||
+                std::max({ extent.X, extent.Y, extent.Z }) * 2.0f * mMetresPerStud < sObstacleSize)
+                continue;
+            // From the vehicle's front to the near side of the thing
+            const float along = -frame.PointToObjectSpace(part->GetPosition()).Z;
+            const CFrame &at = part->GetCFrame();
+            const float own = std::abs(extent.X * at.RightVector().Dot(forward)) + std::abs(extent.Y * at.UpVector().Dot(forward)) +
+                              std::abs(extent.Z * at.LookVector().Dot(forward));
+            nearest = std::min(nearest, along - own - size.Z * 0.5f);
+        }
+        if (nearest == std::numeric_limits<float>::max())
+            continue;
+        body.Looked = now;
+        mOutgoing.push_back(std::format("{{\"t\":\"blocked\",\"id\":{},\"gap\":{:.2f}}}", id, std::max(nearest, 0.0f) * mMetresPerStud));
+    }
+}
+
 // One of the host's vehicles running into something of the guest's. The vehicle's box is only carried to where the host says
 // the vehicle is, so by itself the guest's physics would have the vehicle go on as if nothing were there, shouldering the
 // thing out of its way, or passing through it if it is anchored. Here the two are made to collide as bodies do: by their
 // masses, the thing is knocked on and the vehicle slowed, and the host is told by how much to slow its vehicle; against
 // something anchored the vehicle takes it all, and is stopped.
+//
+// A trowel wall is its bricks joined together, standing loose on the ground: it is met as one thing, by the whole wall's
+// mass, and pushed where the vehicle's front meets it highest, so that it topples over its far edge as a wall a car noses
+// into does, instead of being shot off along the ground.
 void HostBodies::CrashVehicles(const Instance *ground) {
     const Player *player = mDataModel.GetService<Players>()->GetLocalPlayer();
     const Model *character = player != nullptr ? player->GetCharacter() : nullptr;
-    const Instance *bodies = mFolder != nullptr ? mFolder->Target : nullptr;
     const auto now = std::chrono::steady_clock::now();
+    struct Hit {
+        Vector3 Outward;
+        float Closing { 0.0f };
+        // How far into the vehicle it is, along Outward (studs)
+        float Depth { 0.0f };
+        // Where the vehicle pushes it, in the vehicle's space, and how high that is
+        Vector3 Contact;
+        float Height { -std::numeric_limits<float>::max() };
+        Vector3 Where;
+    };
     for (auto &[id, body] : mBodies) {
         const auto *box = body.What == Kind::Vehicle ? static_cast<const BasePart *>(body.Part->Target) : nullptr;
         if (box == nullptr || body.Velocity.Magnitude() * mMetresPerStud < sCrashSpeed || now - body.Crashed < sCrashInterval / 4)
@@ -522,46 +633,68 @@ void HostBodies::CrashVehicles(const Instance *ground) {
         const CFrame &frame = box->GetCFrame();
         const Vector3 half = box->GetSize() * 0.5f;
         const Vector3 axes[3] = { frame.RightVector(), frame.UpVector(), frame.LookVector() * -1.0f };
-        Vector3 change(0.0f, 0.0f, 0.0f), where(0.0f, 0.0f, 0.0f);
-        float hardest = 0.0f;
+        // What is met, by the assembly it belongs to: a wall's bricks are one thing
+        std::unordered_map<BasePart *, Hit> hits;
         for (Instance *found : mDataModel.GetWorkspace()->GetPartBoundsInBox(frame, box->GetSize(), OverlapParams())) {
             auto *part = dynamic_cast<BasePart *>(found);
-            if (part == nullptr || !part->GetCanCollide() || (bodies != nullptr && part->IsDescendantOf(bodies)) ||
-                (mWallFolder != nullptr && mWallFolder->Target != nullptr && part->IsDescendantOf(mWallFolder->Target)) ||
-                (ground != nullptr && part->IsDescendantOf(ground)) || (character != nullptr && part->IsDescendantOf(character)))
+            if (!MeetsVehicles(part, ground, character))
                 continue;
+            BasePart *root = part->GetAnchored() || part->GetAssemblyRootPart() == nullptr ? part : part->GetAssemblyRootPart();
             // The side of the vehicle the thing is at, which is the way the two push each other
             const Vector3 local = frame.PointToObjectSpace(part->GetPosition());
-            const float out[3] = { local.X / half.X, local.Y / half.Y, local.Z / half.Z };
+            const float at[3] = { local.X, local.Y, local.Z };
+            const float halves[3] = { half.X, half.Y, half.Z };
             int face = 0;
             for (int i = 1; i < 3; i++) {
-                if (std::abs(out[i]) > std::abs(out[face]))
+                if (std::abs(at[i] / halves[i]) > std::abs(at[face] / halves[face]))
                     face = i;
             }
-            const Vector3 outward = axes[face] * (out[face] < 0.0f ? -1.0f : 1.0f);
-            const Vector3 partVelocity = part->GetAnchored() ? Vector3(0.0f, 0.0f, 0.0f) : part->GetAssemblyLinearVelocity();
+            const float side = at[face] < 0.0f ? -1.0f : 1.0f;
+            const Vector3 outward = axes[face] * side;
+            const Vector3 partVelocity = part->GetAnchored() ? Vector3(0.0f, 0.0f, 0.0f) : root->GetAssemblyLinearVelocity();
             const float closing = (body.Velocity - partVelocity).Dot(outward);
             if (closing * mMetresPerStud < sCrashSpeed)
                 continue;
-            // How the change of speed is shared: all the vehicle's against what is anchored, else by the two masses
-            const float partMass = part->GetMass() * sKilogramsPerMass;
-            const float vehicleShare = part->GetAnchored() ? 1.0f : partMass / (partMass + sVehicleKilograms);
-            change = change - outward * (closing * (1.0f + sCrashBounce) * vehicleShare);
-            if (!part->GetAnchored()) {
-                // Out of the vehicle at once, at its face: the box is carried, not pushed, so the physics would only have the
-                // brick work its way out over some frames, inside the vehicle meanwhile
-                const float depth = std::abs(out[face]) <= 1.0f ? (1.0f - std::abs(out[face])) * (face == 0 ? half.X : face == 1 ? half.Y : half.Z) : 0.0f;
-                const Vector3 extent = part->GetSize() * 0.5f;
-                const float own = std::abs(extent.X * part->GetCFrame().RightVector().Dot(outward)) + std::abs(extent.Y * part->GetCFrame().UpVector().Dot(outward)) +
-                                  std::abs(extent.Z * part->GetCFrame().LookVector().Dot(outward));
-                CFrame placed = part->GetCFrame();
-                placed.translation = placed.translation + outward * (depth + own);
-                part->SetCFrame(placed);
-                part->SetAssemblyLinearVelocity(partVelocity + outward * (closing * (1.0f + sCrashBounce) * (1.0f - vehicleShare)));
+            const Vector3 extent = part->GetSize() * 0.5f;
+            const CFrame &its = part->GetCFrame();
+            const auto across = [&](const Vector3 &axis) {
+                return std::abs(extent.X * its.RightVector().Dot(axis)) + std::abs(extent.Y * its.UpVector().Dot(axis)) + std::abs(extent.Z * its.LookVector().Dot(axis));
+            };
+            const float depth = halves[face] + across(outward) - std::abs(at[face]);
+            // The highest the vehicle's face meets it: no higher than the vehicle or the thing
+            float contact[3] = { std::clamp(local.X, -half.X, half.X), std::min(half.Y, local.Y + across(axes[1])), std::clamp(local.Z, -half.Z, half.Z) };
+            contact[face] = side * halves[face];
+            Hit &hit = hits[root];
+            if (depth > hit.Depth || hit.Closing == 0.0f) {
+                hit.Outward = outward;
+                hit.Closing = closing;
+                hit.Depth = std::max(depth, 0.0f);
+                hit.Where = part->GetPosition();
             }
-            if (closing > hardest) {
-                hardest = closing;
-                where = part->GetPosition();
+            if (contact[1] > hit.Height) {
+                hit.Height = contact[1];
+                hit.Contact = Vector3(contact[0], contact[1], contact[2]);
+            }
+        }
+        Vector3 change(0.0f, 0.0f, 0.0f), where(0.0f, 0.0f, 0.0f);
+        float hardest = 0.0f;
+        for (auto &[root, hit] : hits) {
+            // How the change of speed is shared: all the vehicle's against what is anchored, else by the two masses
+            const float mass = root->GetAnchored() ? 0.0f : root->GetAssemblyMass();
+            const float vehicleShare = root->GetAnchored() ? 1.0f : mass * sKilogramsPerMass / (mass * sKilogramsPerMass + sVehicleKilograms);
+            const float knocked = hit.Closing * (1.0f + sCrashBounce);
+            change = change - hit.Outward * (knocked * vehicleShare);
+            if (!root->GetAnchored()) {
+                // Out of the vehicle at once, at its face: the box is carried, not pushed, so the physics would only have the
+                // thing work its way out over some frames, inside the vehicle meanwhile
+                CFrame placed = root->GetCFrame();
+                placed.translation = placed.translation + hit.Outward * hit.Depth;
+                root->SetCFrame(placed);
+                root->ApplyImpulseAtPosition(hit.Outward * (knocked * (1.0f - vehicleShare) * mass), frame.PointToWorldSpace(hit.Contact) + hit.Outward * hit.Depth);
+            }
+            if (hit.Closing > hardest) {
+                hardest = hit.Closing;
+                where = hit.Where;
             }
         }
         if (hardest <= 0.0f)

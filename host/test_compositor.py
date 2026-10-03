@@ -134,6 +134,27 @@ def main():
     passed &= bool(ok)
     print(f"{'ok  ' if ok else 'FAIL'} the ground in the sun is untouched: {untouched * 100:.2f}% of {int(in_light.sum())} pixels")
 
+    # The pillar painted red, as the script paints a person or a prop the paintball gun hit (GtrPaintState): where it shows it
+    # takes the red, and the host's ground, round its foot too, is as it was
+    paint_path = outdir / "paint.bmp"
+    paint_path.unlink(missing_ok=True)
+    subprocess.run([str(fake / "fakegta.exe"), *arguments[:-1], str(paint_path), "paint"], cwd=fake, capture_output=True, text=True, timeout=120)
+    if not paint_path.exists():
+        print("FAIL: fakegta saved no picture with paint")
+        return 1
+    painted = np.asarray(Image.open(paint_path).convert("RGB")).astype(float) / 255
+    Image.fromarray((painted * 255 + 0.5).astype(np.uint8)).save(outdir / "paint.png")
+    pillar_shows = erode(np.isfinite(pillar_depth) & (pillar_depth <= host_depth) & ~(guest_depth < pillar_depth), EDGE_PIXELS)
+    ground_shows = erode((rays[..., 2] < 0) & (ground > 0) & (ground < pillar_depth) & ~np.isfinite(guest_depth), EDGE_PIXELS)
+    red = ((painted[..., 0] > 0.8) & (painted[..., 1] < 0.3) & (painted[..., 2] < 0.3))[pillar_shows].mean() if pillar_shows.any() else 0.0
+    same = (np.abs(painted - picture).max(axis=-1) <= COLOR_TOLERANCE)[ground_shows].mean() if ground_shows.any() else 0.0
+    ok = red >= MIN_FRACTION and pillar_shows.sum() > 500
+    passed &= bool(ok)
+    print(f"{'ok  ' if ok else 'FAIL'} a painted prop is painted: {red * 100:.2f}% of {int(pillar_shows.sum())} pixels red")
+    ok = same >= MIN_FRACTION
+    passed &= bool(ok)
+    print(f"{'ok  ' if ok else 'FAIL'} and the ground round it isn't: {same * 100:.2f}% of {int(ground_shows.sum())} pixels unchanged")
+
     # With the camera swinging, a guest frame put with a host picture of another moment is off by degrees. The stand-in
     # draws a magenta box inside each brick, which shows wherever the guest's brick isn't exactly over it. Run the way things
     # were, taking the newest frame, plenty must show, or this check proves nothing; with each picture marked for the frame

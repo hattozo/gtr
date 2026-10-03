@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <thread>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -173,6 +174,7 @@ bool FrameExporter::OpenMapping() {
         Log::Print("Gtr", "Could not create the frame mapping (error {})", (int)GetLastError());
         return false;
     }
+    mPublishedEvent = CreateEventA(nullptr, FALSE, FALSE, GTR_FRAME_PUBLISHED_EVENT);
     mHeader = static_cast<GtrFrameHeader *>(MapViewOfFile(mMapping, FILE_MAP_ALL_ACCESS, 0, 0, bytes));
     if (mHeader == nullptr) {
         Log::Print("Gtr", "Could not map the frame mapping (error {})", (int)GetLastError());
@@ -220,6 +222,7 @@ bool FrameExporter::Open() {
     mView->SetSkyDrawn(false);
     mLightView = new SceneView(gpu, mRenderer.GetSceneResources(), true);
     CreateReadableTarget(gpu.Device, "GtrLight", WGPUTextureFormat_R32Float, GTR_LIGHT_SIZE, GTR_LIGHT_SIZE, mLightTexture, mLightTextureView);
+    std::thread([this]() { WriteQueued(); }).detach();
     return true;
 }
 
@@ -239,8 +242,8 @@ void FrameExporter::Render(Camera *camera, uint32_t width, uint32_t height, cons
     width = std::clamp(width, sMinimumSize, GTR_FRAME_MAX_WIDTH);
     height = std::clamp(height, sMinimumSize, GTR_FRAME_MAX_HEIGHT);
 
-    // With every readback still on its way back from the GPU, the frame is skipped instead of waited for
-    const auto free = std::ranges::find(mReadbacks, ReadbackState::Free, &Readback::State);
+    // With every readback still on its way back from the GPU, or being written out, the frame is skipped instead of waited for
+    const auto free = std::ranges::find_if(mReadbacks, [](const Readback &readback) { return readback.State == ReadbackState::Free; });
     if (free == mReadbacks.end())
         return;
     Readback &readback = *free;
@@ -392,17 +395,44 @@ void FrameExporter::Publish() {
     for (size_t i = 0; i < mReadbacks.size(); i++)
         order[i] = &mReadbacks[i];
     std::ranges::sort(order, {}, &Readback::Order);
+    bool queued = false;
     for (Readback *readback : order) {
-        if (readback->State == ReadbackState::Failed) {
+        const ReadbackState state = readback->State;
+        if (state == ReadbackState::Failed) {
             readback->State = ReadbackState::Free;
-        } else if (readback->State == ReadbackState::Ready) {
-            const uint64_t bytes = (uint64_t)readback->RowBytes * readback->Rect.Height * 2 + (uint64_t)readback->GuiRowBytes * readback->GuiHeight +
-                                   (uint64_t)readback->LightSize * readback->LightSize * sBytesPerPixel;
-            if (const void *pixels = wgpuBufferGetConstMappedRange(readback->Buffer, 0, bytes))
-                Write(*readback, static_cast<const uint8_t *>(pixels));
+        } else if (state == ReadbackState::Written) {
             wgpuBufferUnmap(readback->Buffer);
             readback->State = ReadbackState::Free;
+        } else if (state == ReadbackState::Ready) {
+            const uint64_t bytes = (uint64_t)readback->RowBytes * readback->Rect.Height * 2 + (uint64_t)readback->GuiRowBytes * readback->GuiHeight +
+                                   (uint64_t)readback->LightSize * readback->LightSize * sBytesPerPixel;
+            readback->Pixels = static_cast<const uint8_t *>(wgpuBufferGetConstMappedRange(readback->Buffer, 0, bytes));
+            if (readback->Pixels == nullptr) {
+                wgpuBufferUnmap(readback->Buffer);
+                readback->State = ReadbackState::Free;
+                continue;
+            }
+            readback->State = ReadbackState::Writing;
+            std::lock_guard lock(mQueueMutex);
+            mQueue.push_back(readback);
+            queued = true;
         }
+    }
+    if (queued)
+        mQueueReady.notify_one();
+}
+
+void FrameExporter::WriteQueued() {
+    for (;;) {
+        Readback *readback;
+        {
+            std::unique_lock lock(mQueueMutex);
+            mQueueReady.wait(lock, [this]() { return !mQueue.empty(); });
+            readback = mQueue.front();
+            mQueue.pop_front();
+        }
+        Write(*readback, readback->Pixels);
+        readback->State = ReadbackState::Written;
     }
 }
 
@@ -453,9 +483,27 @@ void FrameExporter::Write(const Readback &readback, const uint8_t *pixels) {
     out += pictureBytes * 2;
 
     const size_t guiTightRowBytes = (size_t)readback.GuiWidth * sBytesPerPixel;
+    const size_t guiBytes = guiTightRowBytes * readback.GuiHeight;
     const uint8_t *guiPixels = pixels + sourceLayerBytes * 2;
-    for (uint32_t row = 0; row < readback.GuiHeight; row++, out += guiTightRowBytes)
-        memcpy(out, guiPixels + (size_t)readback.GuiRowBytes * row, guiTightRowBytes);
+    bool sameGui = readback.GuiWidth == mGuiPictureWidth && readback.GuiHeight == mGuiPictureHeight && mGui.size() == guiBytes && mGuiVersion != 0;
+    for (uint32_t row = 0; sameGui && row < readback.GuiHeight; row++)
+        sameGui = memcmp(mGui.data() + guiTightRowBytes * row, guiPixels + (size_t)readback.GuiRowBytes * row, guiTightRowBytes) == 0;
+    if (!sameGui) {
+        mGui.resize(guiBytes);
+        for (uint32_t row = 0; row < readback.GuiHeight; row++)
+            memcpy(mGui.data() + guiTightRowBytes * row, guiPixels + (size_t)readback.GuiRowBytes * row, guiTightRowBytes);
+        mGuiPictureWidth = readback.GuiWidth;
+        mGuiPictureHeight = readback.GuiHeight;
+        // Counted on from the clock, so that a guest started again doesn't reuse the numbers of the one before
+        mGuiVersion = std::max(mGuiVersion + 1, (uint64_t)std::chrono::steady_clock::now().time_since_epoch().count());
+    }
+    slot.GuiVersion = mGuiVersion;
+    const size_t guiOffset = pictureBytes * 2;
+    if (mSlotGui[slotIndex] != std::pair(mGuiVersion, guiOffset)) {
+        memcpy(out, mGui.data(), guiBytes);
+        mSlotGui[slotIndex] = { mGuiVersion, guiOffset };
+    }
+    out += guiBytes;
     if (readback.LightSize != 0)
         memcpy(out, guiPixels + (size_t)readback.GuiRowBytes * readback.GuiHeight, (size_t)readback.LightSize * readback.LightSize * sBytesPerPixel);
 
@@ -463,6 +511,8 @@ void FrameExporter::Write(const Readback &readback, const uint8_t *pixels) {
     slot.Sequence++;
     mHeader->LatestSlot = slotIndex;
     mHeader->Published++;
+    if (mPublishedEvent != nullptr)
+        SetEvent(mPublishedEvent);
 }
 
 int64_t FrameExporter::GetPublishedCount() const {

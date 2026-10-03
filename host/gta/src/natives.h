@@ -60,6 +60,19 @@ namespace natives
 	inline void TaskSmartFleePed(Ped p, Ped from) { invoke<Void>(0x22B0D0E37CCB840D, p, from, 100.0f, -1, FALSE, FALSE); }
 	inline BOOL IsPedInVehicle(Ped p, Vehicle v) { return invoke<BOOL>(0xA3EE4A07279BB9DB, p, v, FALSE); }
 	inline Ped GetPedInVehicleSeat(Vehicle v, int seat) { return invoke<Ped>(0xBB40DD2270B65366, v, seat, FALSE); }
+	inline BOOL IsPedAPlayer(Ped p) { return invoke<BOOL>(0x12534C348C6CB68B, p); }
+	// STOP_PED_SPEAKING keeps a ped from starting ambient speech (its remarks, its replies to people); the two STOP_CURRENT ones
+	// cut off what it is saying now; DISABLE_PED_PAIN_AUDIO silences its grunts and cries when hurt
+	inline void StopPedSpeaking(Ped p, BOOL stop) { invoke<Void>(0x9D64D7405520E3D3, p, stop); }
+	inline void StopCurrentPlayingSpeech(Ped p) { invoke<Void>(0x7A73D05A607734C7, p); }
+	inline void StopCurrentPlayingAmbientSpeech(Ped p) { invoke<Void>(0xB8BEC0CA6F0EDB0F, p); }
+	inline void DisablePedPainAudio(Ped p, BOOL disable) { invoke<Void>(0xA9A41C1E940FB0E8, p, disable); }
+	// mode 0 is the vehicle's own horn
+	inline void StartVehicleHorn(Vehicle v, int milliseconds) { invoke<Void>(0x9C8C6504B5B63D2C, v, milliseconds, 0, FALSE); }
+	inline void SetVehicleBrakeLights(Vehicle v, BOOL on) { invoke<Void>(0x92B35082E0B42F66, v, on); }
+	// Paint of any colour, in place of the vehicle's own palette colours, for its body (primary) and trim (secondary)
+	inline void SetVehicleCustomPrimaryColour(Vehicle v, int r, int g, int b) { invoke<Void>(0x7141766F91D15BEA, v, r, g, b); }
+	inline void SetVehicleCustomSecondaryColour(Vehicle v, int r, int g, int b) { invoke<Void>(0x36CED73BFED89754, v, r, g, b); }
 	inline BOOL IsVehicleDriveable(Vehicle v) { return invoke<BOOL>(0x4C241E39B23DF959, v, FALSE); }
 	inline Vehicle GetVehiclePedIsIn(Ped p, BOOL last) { return invoke<Vehicle>(0x9A9112A0FE9A4713, p, last); }
 	inline BOOL GetIsDoorValid(Vehicle v, int door) { return invoke<BOOL>(0x645F4B6E8499F632, v, door); }

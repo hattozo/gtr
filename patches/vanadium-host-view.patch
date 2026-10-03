@@ -17,6 +17,54 @@ index ca3ae7e..679bd8d 100644
  @fragment
  fn fs_glass_filter(in: VertexOutput) -> @location(0) vec4<f32> {
      let tint = mix(vec3<f32>(1.0), in.color.rgb, clamp(in.color.a * 2.0, 0.0, 1.0));
+diff --git a/Engine/Gfx/GpuContext.cpp b/Engine/Gfx/GpuContext.cpp
+index a05f32d..6985f06 100644
+--- a/Engine/Gfx/GpuContext.cpp
++++ b/Engine/Gfx/GpuContext.cpp
+@@ -215,6 +215,10 @@ void GpuContext::Configure() {
+     config.height = Height;
+     config.alphaMode = WGPUCompositeAlphaMode_Auto;
+     config.presentMode = mVSync ? WGPUPresentMode_Fifo : WGPUPresentMode_Immediate;
++    for (size_t i = 0; !mVSync && i < capabilities.presentModeCount; i++) {
++        if (capabilities.presentModes[i] == WGPUPresentMode_Mailbox)
++            config.presentMode = WGPUPresentMode_Mailbox;
++    }
+ 
+     wgpuSurfaceConfigure(Surface, &config);
+     wgpuSurfaceCapabilitiesFreeMembers(capabilities);
+@@ -270,6 +274,18 @@ void GpuContext::EndFrame() {
+     wgpuInstanceProcessEvents(Instance);
+ }
+ 
++void GpuContext::SetVSync(bool vsync) {
++    if (vsync == mVSync)
++        return;
++
++    mVSync = vsync;
++    if (Device == nullptr)
++        return;
++
++    ReleaseFrame();
++    Configure();
++}
++
+ void GpuContext::Resize(uint32_t width, uint32_t height) {
+     if (width == 0 || height == 0 || (width == Width && height == Height))
+         return;
+diff --git a/Engine/Gfx/GpuContext.h b/Engine/Gfx/GpuContext.h
+index 34e00a4..db2d8d3 100644
+--- a/Engine/Gfx/GpuContext.h
++++ b/Engine/Gfx/GpuContext.h
+@@ -41,6 +41,9 @@ public:
+     bool BeginFrame();
+     void EndFrame();
+     void Resize(uint32_t width, uint32_t height);
++    // Without vsync the surface presents by mailbox where the adapter offers it, else immediately: a window that is not
++    // shown, or is covered, need not wait for the display between frames
++    void SetVSync(bool vsync);
+ 
+     WGPUShaderModule CreateShaderModule(const std::string &wgsl, const std::string &debugName);
+     // Loads rbxasset://shaders/<name>.wgsl, expanding its #include "<name>" lines; a file already included is skipped
 diff --git a/Engine/Gfx/Renderer.cpp b/Engine/Gfx/Renderer.cpp
 index 3305a6c..b2195c9 100644
 --- a/Engine/Gfx/Renderer.cpp

@@ -39,6 +39,8 @@ GTR_LAYER(7)
 texture GtrGuiTex : GTRGUI;
 sampler sGtrGui { Texture = GtrGuiTex; AddressU = CLAMP; AddressV = CLAMP; };
 #define GTR_MARK_PIXELS 8
+// As in gtr_frame.h
+#define GTR_PAINT_BOXES 16
 // The depth kept for a pixel the guest drew nothing in: far, and within what a half float holds
 #define GTR_NO_GUEST 60000.0
 #define GTR_SHADOW_STEPS 24
@@ -60,6 +62,10 @@ uniform float4 GtrTickLayerB = float4(0, 0, 0, 0);
 uniform bool GtrShowMark = false;
 // Set by the add-on while the guest's frames carry an interface
 uniform bool GtrGui = false;
+// GTA's people and props the paintball gun has painted: GtrPaintState's boxes, each its 16 floats as four float4s (centre and
+// strength; the three axes divided by the half sizes; the colour), in the camera's space
+uniform int GtrPaintCount = 0;
+uniform float4 GtrPaint[GTR_PAINT_BOXES * 4];
 // Set by the add-on from the host's script: the direction towards the host's sun or moon in the camera's space (x right,
 // y up, z forward), and how much darker its shadows are than its light; 0 while the script knows of no sun
 uniform float3 GtrSunView = float3(0.0, 1.0, 0.0);
@@ -514,6 +520,26 @@ float3 final_picture(float4 pos, float2 uv)
 		shade /= 9.0;
 		const float3 sunShade = min(saturate(GtrSunShadow * SunShadows) * sun_tint(), 0.9) * shade.x;
 		color *= 1.0 - max(max(sunShade, ContactShadow * shade.y), saturate(LampShadows) * shade.z);
+	}
+
+	// The host's surfaces inside a painted thing's box take the paint's colour, keeping their own lightness, so the folds of
+	// a coat and the shading of a cone still show through it; softly at the box's sides
+	if (info.x < 0.5 && GtrPaintCount > 0 && info.z < 1000.0)
+	{
+		const float2 tangent = float2(ViewTangent * BUFFER_WIDTH * BUFFER_RCP_HEIGHT, ViewTangent);
+		const float3 at = view_position(uv, info.z, tangent);
+		[loop] for (int i = 0; i < min(GtrPaintCount, GTR_PAINT_BOXES); ++i)
+		{
+			const float4 a = GtrPaint[i * 4], b = GtrPaint[i * 4 + 1], c = GtrPaint[i * 4 + 2], d = GtrPaint[i * 4 + 3];
+			const float3 offset = at - a.xyz;
+			const float3 local = abs(float3(dot(offset, b.xyz), dot(offset, float3(b.w, c.x, c.y)), dot(offset, float3(c.z, c.w, d.x))));
+			const float inside = saturate((1.0 - max(local.x, max(local.y, local.z))) * 50.0);
+			if (inside > 0.0)
+			{
+				const float3 paint = d.yzw;
+				color = lerp(color, min(paint * (luma(color) / max(luma(paint), 0.05)), 1.0), a.w * inside);
+			}
+		}
 	}
 
 	return color;

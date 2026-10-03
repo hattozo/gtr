@@ -3,10 +3,12 @@
 #   -Place     the place whose tools the player gets (default: places\Tools.rbxlx, the classic tools and nothing else)
 #   -KeepMap   keep the place's own map too
 #   -Empty     no place at all: an empty world, which the tests without a character use
+#   -Fps       frames a second the guest keeps to (default: the display's refresh rate)
 param(
     [string]$Place = (Join-Path (Split-Path -Parent $PSScriptRoot) "places\Tools.rbxlx"),
     [switch]$KeepMap,
     [switch]$Empty,
+    [int]$Fps = 0,
     [string]$Msys = "C:\msys64\clang64\bin"
 )
 $ErrorActionPreference = "Stop"
@@ -20,6 +22,7 @@ $env:PATH = "$Msys;$env:PATH"
 $arguments = @()
 if ($Place) { $arguments += "`"$Place`"" }
 if ($KeepMap) { $arguments += "--keep-map" }
+if ($Fps -gt 0) { $arguments += "--fps"; $arguments += "$Fps" }
 if ($arguments) {
     Start-Process -FilePath (Join-Path $folder "gtr-guest.exe") -ArgumentList $arguments -WorkingDirectory $folder
 } else {

@@ -423,7 +423,7 @@ GTA V Enhanced (story mode)                         gtr-guest.exe (Vanadium + gu
   and is moved towards the character by its velocity (the gap closed in 0.08 s; set outright when 2.5 m behind or 1.6 m
   off in height), so GTA's people push against it and step round it.
 - **Repository (3 Oct):** first commit. The clone became the `vanadium/` submodule (GitHub's
-  `noobwarrior-org/dieselnoob`), pinned at `492beca`, the commit before the checkout's "Added everything": that one
+  `noobwarrior-org/vanadium`), pinned at `492beca`, the commit before the checkout's "Added everything": that one
   changes the engine heavily and breaks the guest, so it waits until the owner asks for the merge. The patch stays
   applied but uncommitted in the submodule's tree. `build-guest.ps1 -Clone` now checks out the pinned commit instead of
   cloning `..\vanadium`, which it only reads for its downloaded `.cache`.

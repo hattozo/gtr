@@ -16,7 +16,7 @@ is **Legacy** (`D:\SteamLibrary\steamapps\common\Grand Theft Auto V`), which `ho
 ## Hard rules
 
 - **Never edit or build in the user's own Vanadium checkout** (`..\vanadium`, beside this repo). The guest builds
-  against a private clone in `vanadium/`, a git submodule of `github.com/noobwarrior-org/dieselnoob`, pinned at
+  against a private clone in `vanadium/`, a git submodule of `github.com/noobwarrior-org/vanadium`, pinned at
   `492beca` (the commit before Vanadium's big "Added everything" change, which breaks the guest). Its working tree
   carries the patch below uncommitted, so the submodule shows as modified. Move the pin only when the user asks.
 - **Engine changes go in `patches/vanadium-host-view.patch`**, applied to the clone. When the clone is updated from

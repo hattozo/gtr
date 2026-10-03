@@ -1,0 +1,6 @@
+# Everything built or fetched. The clone of Vanadium the guest builds against is the vanadium/ submodule.
+/build/
+/out/
+/third_party/
+/.venv/
+__pycache__/

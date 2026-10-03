@@ -1,0 +1,244 @@
+diff --git a/AppDistribution/content/shaders/part.wgsl b/AppDistribution/content/shaders/part.wgsl
+index ca3ae7e..679bd8d 100644
+--- a/AppDistribution/content/shaders/part.wgsl
++++ b/AppDistribution/content/shaders/part.wgsl
+@@ -601,6 +601,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+     return shade(in, localDerivatives(in)).color;
+ }
+ 
++// How much a see-through fragment covers, and how far along the view it is, for a view that keeps them (SceneView's
++// transparent coverage): the nearest distance is kept, and the coverages are laid over one another
++@fragment
++fn fs_coverage(in: VertexOutput) -> @location(0) vec4<f32> {
++    let alpha = shade(in, localDerivatives(in)).color.a;
++    return vec4<f32>(in.world.w, in.world.w, in.world.w, alpha);
++}
++
+ @fragment
+ fn fs_glass_filter(in: VertexOutput) -> @location(0) vec4<f32> {
+     let tint = mix(vec3<f32>(1.0), in.color.rgb, clamp(in.color.a * 2.0, 0.0, 1.0));
+diff --git a/Engine/Gfx/Renderer.cpp b/Engine/Gfx/Renderer.cpp
+index 3305a6c..b2195c9 100644
+--- a/Engine/Gfx/Renderer.cpp
++++ b/Engine/Gfx/Renderer.cpp
+@@ -298,6 +298,10 @@ void Renderer::UseSampleCount(uint32_t sampleCount) {
+     }
+ 
+     SceneResources &res = mSceneResources;
++    // Drawn into a single-sampled target against the resolved depth, whatever the scene's sample count
++    if (mCoveragePipeline == nullptr)
++        mCoveragePipeline = CreateScenePipeline("SceneTransparentCoverage", PartPass::Coverage, 1);
++    res.CoveragePipeline = mCoveragePipeline;
+     res.OpaquePipeline = pipelines.Opaque;
+     res.MarkerPipeline = pipelines.Marker;
+     res.TransparentPipeline = pipelines.Transparent;
+@@ -322,6 +326,8 @@ const char *Renderer::GetFragmentEntryPoint(PartPass pass) {
+     case PartPass::HighlightOccluded:
+     case PartPass::HighlightOnTop:
+         return "fs_highlight";
++    case PartPass::Coverage:
++        return "fs_coverage";
+     default:
+         return "fs_main";
+     }
+@@ -332,6 +338,7 @@ WGPURenderPipeline Renderer::CreateScenePipeline(const char *label, PartPass pas
+     const bool glass = pass == PartPass::GlassFilter || pass == PartPass::Glass;
+     const bool adorn = pass == PartPass::Adorn;
+     const bool highlight = pass == PartPass::HighlightOccluded || pass == PartPass::HighlightOnTop;
++    const bool coverage = pass == PartPass::Coverage;
+     const bool transparent = pass == PartPass::Transparent || decal || glass;
+     const bool writesViewDepth = pass == PartPass::Opaque;
+ 
+@@ -346,12 +353,16 @@ WGPURenderPipeline Renderer::CreateScenePipeline(const char *label, PartPass pas
+     } else if (pass == PartPass::GlassFilter) {
+         blend.color = { WGPUBlendOperation_Add, WGPUBlendFactor_Dst, WGPUBlendFactor_Zero };
+         blend.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_Zero, WGPUBlendFactor_One };
++    } else if (coverage) {
++        // The nearest distance, and the coverages laid over one another
++        blend.color = { WGPUBlendOperation_Min, WGPUBlendFactor_One, WGPUBlendFactor_One };
++        blend.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrcAlpha };
+     }
+ 
+     WGPUColorTargetState colorTargets[2] {};
+     // Adorns go over the finished frame, in display colors
+-    colorTargets[0].format = adorn ? Gpu.SurfaceFormat : highlight ? SceneView::HighlightIdFormat : SceneView::SceneFormat;
+-    colorTargets[0].blend = transparent ? &blend : nullptr;
++    colorTargets[0].format = adorn ? Gpu.SurfaceFormat : highlight ? SceneView::HighlightIdFormat : coverage ? SceneView::CoverageFormat : SceneView::SceneFormat;
++    colorTargets[0].blend = transparent || coverage ? &blend : nullptr;
+     colorTargets[0].writeMask = WGPUColorWriteMask_All;
+     colorTargets[1].format = sampleCount > 1 ? SceneView::MultisampledViewDepthFormat : SceneView::ViewDepthFormat;
+     colorTargets[1].writeMask = WGPUColorWriteMask_All;
+@@ -364,7 +375,7 @@ WGPURenderPipeline Renderer::CreateScenePipeline(const char *label, PartPass pas
+ 
+     WGPUDepthStencilState depthStencil {};
+     depthStencil.format = WGPUTextureFormat_Depth24Plus;
+-    depthStencil.depthWriteEnabled = transparent || adorn || highlight ? WGPUOptionalBool_False : WGPUOptionalBool_True;
++    depthStencil.depthWriteEnabled = transparent || adorn || highlight || coverage ? WGPUOptionalBool_False : WGPUOptionalBool_True;
+     depthStencil.depthCompare = WGPUCompareFunction_Less;
+     // Only the surface the scene shows takes an Occluded highlight's ID, pulled toward the camera as a decal is, since with
+     // antialiasing the depth it is tested against is rebuilt from the resolved view depth; an AlwaysOnTop one is drawn over everything
+@@ -431,7 +442,7 @@ void Renderer::RenderFrame() {
+         frameView.View->Render(encoder, frameView.View->GetColorView(), frame != nullptr ? frame->GetCamera() : nullptr);
+     }
+ 
+-    {
++    if (mMainSceneDrawn) {
+         VN_PROFILE_SCOPE("Render", "Main view");
+         mMainView->Render(encoder, Gpu.FrameView, mDataModel != nullptr ? mDataModel->GetWorkspace()->GetCurrentCamera() : nullptr);
+     }
+@@ -440,7 +451,7 @@ void Renderer::RenderFrame() {
+     WGPURenderPassColorAttachment colorAttachment {};
+     colorAttachment.view = Gpu.FrameView;
+     colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+-    colorAttachment.loadOp = WGPULoadOp_Load;
++    colorAttachment.loadOp = mMainSceneDrawn ? WGPULoadOp_Load : WGPULoadOp_Clear;
+     colorAttachment.storeOp = WGPUStoreOp_Store;
+ 
+     WGPURenderPassDescriptor uiPassDesc {};
+diff --git a/Engine/Gfx/Renderer.h b/Engine/Gfx/Renderer.h
+index e0e15cf..0438182 100644
+--- a/Engine/Gfx/Renderer.h
++++ b/Engine/Gfx/Renderer.h
+@@ -66,6 +66,10 @@ public:
+ 
+     ContentProvider &GetContentProvider();
+     WGPUBindGroupLayout GetSceneBindGroupLayout() const;
++    // What a host needs to draw a SceneView of its own, beside the ones the renderer keeps
++    const SceneResources &GetSceneResources() const { return mSceneResources; }
++    // A host that draws the scene in a view of its own has no use for the window's: only the interface is drawn there then
++    void SetMainSceneDrawn(bool drawn) { mMainSceneDrawn = drawn; }
+ 
+     Gfx::GpuContext Gpu;
+ private:
+@@ -83,7 +87,9 @@ private:
+         Glass,
+         Adorn,
+         HighlightOccluded,
+-        HighlightOnTop
++        HighlightOnTop,
++        // A see-through part's coverage and distance, for a view that keeps them
++        Coverage
+     };
+ 
+     struct ScenePipelines {
+@@ -154,6 +160,8 @@ private:
+ 
+     Instance *mExplorerSelectedInstance;
+     bool mDebugUiVisible;
++    bool mMainSceneDrawn { true };
++    WGPURenderPipeline mCoveragePipeline { nullptr };
+     bool mDebugCameraEnabled;
+     uint64_t mFrameViewsCreated;
+     std::shared_ptr<InstanceHandle> mDebugCamera;
+diff --git a/Engine/Gfx/SceneView.cpp b/Engine/Gfx/SceneView.cpp
+index 836ce0d..57d7368 100644
+--- a/Engine/Gfx/SceneView.cpp
++++ b/Engine/Gfx/SceneView.cpp
+@@ -361,6 +361,44 @@ SceneView::~SceneView() {
+     if (mUniformBuffer != nullptr) { wgpuBufferRelease(mUniformBuffer); mUniformBuffer = nullptr; }
+ }
+ 
++void SceneView::SetTransparentCoverage(bool kept) {
++    mCoverageKept = kept;
++}
++
++void SceneView::SetSkyDrawn(bool drawn) {
++    mSkyDrawn = drawn;
++}
++
++// The see-through parts drawn again, each fragment's coverage and distance instead of its color, against the resolved depth
++// so the opaque parts hide what is behind them
++void SceneView::DrawCoverage(WGPUCommandEncoder encoder, ContentProvider &provider) {
++    if (mCoverageTexture == nullptr || mCoverageWidth != mWidth || mCoverageHeight != mHeight) {
++        if (mCoverageView != nullptr)
++            wgpuTextureViewRelease(mCoverageView);
++        if (mCoverageTexture != nullptr)
++            wgpuTextureRelease(mCoverageTexture);
++        CreateTarget(mGpu.Device, "SceneCoverage", CoverageFormat, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding,
++                     WGPUTextureAspect_All, mWidth, mHeight, 1, mCoverageTexture, mCoverageView);
++        mCoverageWidth = mWidth;
++        mCoverageHeight = mHeight;
++    }
++    mCoverageBatches.clear();
++    // The adorns (a tool's outline of a part) too: they are drawn over the finished picture, with no depth of their own
++    for (const std::vector<DrawBatch> *batches : { &mBlurredTransparentBatches, &mTransparentBatches, &mAdornBatches }) {
++        for (DrawBatch batch : *batches) {
++            if (batch.SurfaceGui >= 0 || batch.PlaneEffect >= 0 || mResources.CoveragePipeline == nullptr)
++                continue;
++            batch.Pipeline = mResources.CoveragePipeline;
++            mCoverageBatches.push_back(batch);
++        }
++    }
++    const WGPUColor empty { EmptyCoverageDepth, EmptyCoverageDepth, EmptyCoverageDepth, 0.0 };
++    WGPURenderPassEncoder pass = BeginPass(encoder, { ColorAttachment(mCoverageView, WGPULoadOp_Clear, empty) }, mDepthView, WGPULoadOp_Load,
++                                           "SceneCoverage");
++    DrawBatches(pass, mCoverageBatches, provider);
++    EndPass(pass);
++}
++
+ void SceneView::Resize(uint32_t width, uint32_t height) {
+     width = std::max<uint32_t>(width, 1);
+     height = std::max<uint32_t>(height, 1);
+@@ -1550,7 +1588,8 @@ void SceneView::Render(WGPUCommandEncoder encoder, WGPUTextureView target, Camer
+ 
+     WGPURenderPassEncoder skyPass = BeginPass(encoder, { ColorAttachment(mSkyView, WGPULoadOp_Clear, sClearSky) }, mDepthView, WGPULoadOp_Load,
+                                               "Sky");
+-    mResources.Sky->Draw(skyPass, mBindGroup, lighting, provider);
++    if (mSkyDrawn)
++        mResources.Sky->Draw(skyPass, mBindGroup, lighting, provider);
+     EndPass(skyPass);
+ 
+     if (mResources.Quality == nullptr || mResources.Quality->AmbientOcclusion)
+@@ -1583,6 +1622,8 @@ void SceneView::Render(WGPUCommandEncoder encoder, WGPUTextureView target, Camer
+             mResources.Gui->DrawSurface(pass, mResources.Gui->GetSurfaceDraws()[(size_t)index], mSampleCount);
+     }
+     EndPass(pass);
++    if (mCoverageKept)
++        DrawCoverage(encoder, provider);
+     if (focus.has_value())
+         mResources.Focus->RenderNear(encoder, mDepthOfFieldTargets, *focus, tanX, tanY, focusScene);
+ 
+diff --git a/Engine/Gfx/SceneView.h b/Engine/Gfx/SceneView.h
+index fe0cace..b4f6563 100644
+--- a/Engine/Gfx/SceneView.h
++++ b/Engine/Gfx/SceneView.h
+@@ -72,6 +72,7 @@ struct SceneResources {
+     WGPURenderPipeline AdornPipeline { nullptr };
+     WGPURenderPipeline HighlightOccludedPipeline { nullptr };
+     WGPURenderPipeline HighlightOnTopPipeline { nullptr };
++    WGPURenderPipeline CoveragePipeline { nullptr };
+     GeometryRegistry *Geometry { nullptr };
+     PartTextures *Textures { nullptr };
+     SkyRenderer *Sky { nullptr };
+@@ -108,6 +109,16 @@ public:
+     static constexpr float EmptyViewDepth = 1.0e9f;
+     // What the multisampled opaque pass writes instead, since a 32-bit float target cannot be resolved
+     static constexpr WGPUTextureFormat MultisampledViewDepthFormat = WGPUTextureFormat_RGBA16Float;
++    // A see-through part's coverage and distance: the nearest view depth in red, green and blue, the coverage in alpha
++    static constexpr WGPUTextureFormat CoverageFormat = WGPUTextureFormat_RGBA16Float;
++    static constexpr float EmptyCoverageDepth = 60000.0f;
++
++    // For a view whose picture is laid over another's: what its see-through parts cover, and how far off they are, which
++    // the view depth (opaque parts alone) doesn't tell, and whether the sky is drawn behind everything
++    void SetTransparentCoverage(bool kept);
++    void SetSkyDrawn(bool drawn);
++    // Cleared to empty each frame the coverage is kept
++    WGPUTextureView GetCoverageView() const { return mCoverageView; }
+     static constexpr WGPUTextureFormat HighlightIdFormat = WGPUTextureFormat_R8Unorm;
+     static constexpr uint32_t HighlightShift = 8;
+     static constexpr WGPUColor ClearColor { 0.45, 0.55, 0.60, 1.00 };
+@@ -247,6 +258,14 @@ private:
+     WGPURenderPassEncoder BeginPass(WGPUCommandEncoder encoder, std::initializer_list<WGPURenderPassColorAttachment> colorAttachments,
+                                     WGPUTextureView depth, WGPULoadOp depthLoadOp, const char *label);
+     void DrawBatches(WGPURenderPassEncoder pass, const std::vector<DrawBatch> &batches, ContentProvider &provider);
++    void DrawCoverage(WGPUCommandEncoder encoder, ContentProvider &provider);
++    bool mCoverageKept { false };
++    bool mSkyDrawn { true };
++    WGPUTexture mCoverageTexture { nullptr };
++    WGPUTextureView mCoverageView { nullptr };
++    uint32_t mCoverageWidth { 0 };
++    uint32_t mCoverageHeight { 0 };
++    std::vector<DrawBatch> mCoverageBatches;
+ 
+     GpuContext &mGpu;
+     const SceneResources &mResources;
